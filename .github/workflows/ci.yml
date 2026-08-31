@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["main", "develop"]
+    branches: ["master"]
   pull_request:
-    branches: ["main"]
+    branches: ["master"]
 
 jobs:
   lint-and-type-check:
@@ -30,9 +30,8 @@ jobs:
       - name: Check formatting with ruff
         run: uv run ruff format --check src tests
 
-      # mypy strict re-enabled once all modules are annotated (final commit)
-      # - name: Type check with mypy
-      #   run: uv run mypy src
+      - name: Type check with mypy
+        run: uv run mypy src
 
   test:
     name: Tests
