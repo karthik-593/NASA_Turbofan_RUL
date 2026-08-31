@@ -1,0 +1,16 @@
+data/
+notebooks/
+tests/
+docs/
+configs/
+mlruns/
+**/__pycache__/
+*.ipynb
+*.pyc
+.git/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+uv.lock
+# models/ is intentionally NOT ignored — the bundle ships inside the image
