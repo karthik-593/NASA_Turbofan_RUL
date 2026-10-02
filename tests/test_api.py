@@ -26,9 +26,12 @@ def _has_bundle() -> bool:
     return root.exists() and next(root.iterdir(), None) is not None
 
 
-pytestmark = pytest.mark.skipif(
-    not _has_bundle(), reason="no models/FD001/lstm bundle — run train.py first"
-)
+pytestmark = [
+    pytest.mark.requires_data,
+    pytest.mark.skipif(
+        not _has_bundle(), reason="no models/FD001/lstm bundle — run train.py first"
+    ),
+]
 
 
 def _cycles(n: int) -> list[dict]:  # type: ignore[type-arg]

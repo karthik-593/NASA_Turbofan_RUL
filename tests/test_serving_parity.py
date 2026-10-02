@@ -21,6 +21,8 @@ from turbofan.models.lstm_model import make_last_windows
 from turbofan.serving.schemas import CycleReading
 from turbofan.serving.service import to_frame
 
+pytestmark = pytest.mark.requires_data
+
 RAW = "data/raw"
 
 
