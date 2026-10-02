@@ -121,9 +121,9 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | Rule | Violation |
 |---|---|
 | 2 | **Partially resolved**: `reports/` exists (`artifact_inventory.md`, `legacy/`), but analysis results generally still live in notebook outputs, not written there as a matter of course. |
-| 3 | No `final_eval`. Test set is read by `evaluation/comparison.py` (selection), `training/train.py` (every training run scores on test and writes it to the manifest), nb02 (tuning/ablation), and `serving/service.py` (confidence band from test metrics). `tracking.run()` tags every `comparison.py` run `cv`, never `final_test`, precisely because none of these reads qualify as the sealed one — there is nothing in the repo yet that would earn that tag. |
+| 3 | No `final_eval`. Test set is read by `evaluation/comparison.py` (selection), `training/train.py` (every training run scores on test and writes it to the manifest), nb02 (tuning/ablation), and `serving/service.py` (confidence band from test metrics). `tracking.run()` tags every `comparison.py` run `legacy_test_selection` (D25a), never `final_test`, precisely because none of these reads qualify as the sealed one — there is nothing in the repo yet that would earn that tag. |
 | 4 | No reported number carries a bootstrap CI; most omit n. |
 | 5 | No `params.yaml`; `config.py` constants (incl. D05 KMeans settings) are the interim single source. Literals still in `src/`: D06, D20–D22, D24 seeds. |
 | 6 | **Resolved 2026-10-02** for the pieces this rule names: `tracking.run()` logs git SHA + dirty flag and the DVC data hash (D32/D33) on every tracked run in `train.py`/`comparison.py`. Still open: nothing registers a model (D33's registry code path is tested but unused), and `final_test` is not produced by anything yet (see rule 3's row below). |
-| 7 | Tracked notebooks contain outputs. |
+| 7 | **Resolved 2026-10-02**: outputs stripped from all 3 tracked notebooks (0 outputs, 0 execution counts) and the `nbstripout` pre-commit hook keeps them out. |
 | 8 | `features/engineering.py` silent `fillna` fallbacks (D06). |
