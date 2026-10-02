@@ -95,6 +95,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | ID | Decision | Evidence | Status |
 |---|---|---|---|
 | D32 | DVC remote for `data/raw` is a local directory (`../dvc-store`, sibling of the repo), not cloud storage | No evidence needed or applicable — this is an infrastructure choice, not a modeling claim. Adopted because the only consumer today is a single local checkout; untested with a second machine or a CI runner pulling data. **Test plan:** swap to a cloud remote (e.g. S3/GCS) once Jenkins or any CI/remote runner needs `dvc pull` to work outside this machine; `dvc remote add`/`modify` changes only `.dvc/config`, not how data is tracked (`data/raw.dvc` is unaffected). | ASSUMPTION |
+| D33 | MLflow backend = local sqlite file, run via `docker-compose.yml` (`./mlflow/mlflow.db`, artifacts served through the tracking server, not a host-local path) | No evidence needed or applicable — infrastructure choice, not a modeling claim. Fine for single-user local work; a shared sqlite file over a bind mount is not safe for concurrent writers from multiple machines. **Test plan:** revisit (likely Postgres/MySQL backend) once more than one person or CI runner writes to the same tracking server at once — sqlite's single-writer lock is the concrete failure mode to watch for. | ASSUMPTION |
 
 ## Contradictions found while seeding (rule 9)
 
@@ -111,10 +112,10 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 
 | Rule | Violation |
 |---|---|
-| 2 | No `reports/` directory; analysis results live only in notebook outputs. |
-| 3 | No `final_eval`. Test set is read by `evaluation/comparison.py` (selection), `training/train.py` (every training run scores on test and writes it to the manifest), nb02 (tuning/ablation), and `serving/service.py` (confidence band from test metrics). |
+| 2 | **Partially resolved**: `reports/` exists (`artifact_inventory.md`, `legacy/`), but analysis results generally still live in notebook outputs, not written there as a matter of course. |
+| 3 | No `final_eval`. Test set is read by `evaluation/comparison.py` (selection), `training/train.py` (every training run scores on test and writes it to the manifest), nb02 (tuning/ablation), and `serving/service.py` (confidence band from test metrics). `tracking.run()` tags every `comparison.py` run `cv`, never `final_test`, precisely because none of these reads qualify as the sealed one — there is nothing in the repo yet that would earn that tag. |
 | 4 | No reported number carries a bootstrap CI; most omit n. |
 | 5 | No `params.yaml`; `config.py` constants (incl. D05 KMeans settings) are the interim single source. Literals still in `src/`: D06, D20–D22, D24 seeds. |
-| 6 | No MLflow logging. DVC now tracks `data/raw` (D32) — `data/raw.dvc`'s hash is available, but no training run yet logs it anywhere. |
+| 6 | **Resolved 2026-10-02** for the pieces this rule names: `tracking.run()` logs git SHA + dirty flag and the DVC data hash (D32/D33) on every tracked run in `train.py`/`comparison.py`. Still open: nothing registers a model (D33's registry code path is tested but unused), and `final_test` is not produced by anything yet (see rule 3's row below). |
 | 7 | Tracked notebooks contain outputs. |
 | 8 | `features/engineering.py` silent `fillna` fallbacks (D06). |
