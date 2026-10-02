@@ -5221,9 +5221,11 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "joblib" },
+    { name = "mlflow" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "torch" },
     { name = "uvicorn", extra = ["standard"] },
@@ -5244,9 +5246,6 @@ dev = [
     { name = "ruff" },
     { name = "scipy" },
     { name = "seaborn" },
-]
-mlops = [
-    { name = "mlflow" },
 ]
 
 [package.dev-dependencies]
@@ -5275,7 +5274,7 @@ requires-dist = [
     { name = "joblib", specifier = ">=1.4.0" },
     { name = "jupyterlab", marker = "extra == 'dev'", specifier = ">=4.2.0" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.9.0" },
-    { name = "mlflow", marker = "extra == 'mlops'", specifier = ">=2.13.0" },
+    { name = "mlflow", specifier = ">=2.13.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "pandas", specifier = ">=2.2.0" },
@@ -5284,6 +5283,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4.0" },
     { name = "scikit-learn", specifier = ">=1.5.0" },
     { name = "scipy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
@@ -5292,7 +5292,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
     { name = "xgboost", specifier = ">=2.0.0" },
 ]
-provides-extras = ["mlops", "dev"]
+provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
