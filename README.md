@@ -76,7 +76,7 @@ bundle format, and the train/serve parity guarantee.
 ## Quickstart
 
 ```bash
-uv sync --all-extras                # install deps
+uv sync                             # install deps (incl. dev tools)
 uv run dvc pull                     # fetch data/raw (NASA C-MAPSS files, DVC-tracked)
 
 # train and ship the LSTM for one dataset
@@ -100,7 +100,7 @@ curl -X POST http://localhost:8000/predict \
 ## Development
 
 ```bash
-uv sync --all-extras
+uv sync
 uv run pytest tests/ -v --cov=src/turbofan
 uv run ruff check src tests
 uv run ruff format --check src tests
