@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib
 import json
 import platform
+import subprocess
 from collections import namedtuple
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
@@ -28,7 +29,7 @@ import joblib
 
 from turbofan import config as cfg
 
-BUNDLE_SCHEMA = 1
+BUNDLE_SCHEMA = 2
 MODEL_FILE = "model.bin"
 FEATURE_STATE_FILE = "feature_state.pkl"
 MANIFEST_FILE = "manifest.json"
@@ -66,6 +67,29 @@ def _lib_versions() -> dict[str, str | None]:
     return out
 
 
+def _git(repo_dir: Path, *args: str) -> str:
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(repo_dir), *args], capture_output=True, text=True, check=False
+        )
+    except FileNotFoundError as e:
+        raise RuntimeError("git executable not found; cannot record bundle provenance") from e
+    if res.returncode != 0:
+        raise RuntimeError(
+            f"`git {' '.join(args)}` failed in {repo_dir}: {res.stderr.strip()} — "
+            "bundles must be built from a git checkout so the manifest can record the commit"
+        )
+    return res.stdout.strip()
+
+
+def git_provenance(repo_dir: Path | None = None) -> dict[str, str | bool]:
+    """Commit SHA of the code, and whether tracked files differ from it (untracked ignored)."""
+    repo_dir = repo_dir or Path(__file__).resolve().parent
+    sha = _git(repo_dir, "rev-parse", "HEAD")
+    dirty = bool(_git(repo_dir, "status", "--porcelain", "--untracked-files=no"))
+    return {"git_commit": sha, "git_dirty": dirty}
+
+
 def new_version() -> str:
     """UTC timestamp version id; lexically sortable, so max() is the latest."""
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -87,6 +111,7 @@ def save_bundle(
     metrics: dict[str, dict[str, float]],
 ) -> Path:
     """Write a complete bundle; return its directory."""
+    provenance = git_provenance()
     d = bundle_dir(out_root, dataset, model_name, version)
     d.mkdir(parents=True, exist_ok=True)
     model.save(str(d / MODEL_FILE))
@@ -98,6 +123,7 @@ def save_bundle(
         "version": version,
         "created_at": datetime.now(UTC).isoformat(),
         "seed": seed,
+        **provenance,
         "config": {
             "rul_cap": cfg.RUL_CAP,
             "window": cfg.WINDOW,

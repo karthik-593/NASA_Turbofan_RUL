@@ -4,6 +4,7 @@ Uses Ridge (CPU, fast) and synthetic data; no LSTM, no real dataset.
 """
 
 import json
+import re
 
 import numpy as np
 import pytest
@@ -11,6 +12,7 @@ import pytest
 from turbofan.evaluation.comparison import build_registry
 from turbofan.training.bundle import (
     Bundle,
+    git_provenance,
     load_bundle,
     new_version,
     resolve_version,
@@ -65,6 +67,20 @@ def test_manifest_fields(tmp_path):
     assert "lib_versions" in m
     assert "config" in m
     assert "files" in m
+
+
+def test_manifest_records_git_commit_and_dirty_flag(tmp_path):
+    path = save_bundle(
+        tmp_path, "FD001", "ridge", "v1", _ridge(), _STATS, seed=42, metrics=_METRICS
+    )
+    m = json.loads((path / "manifest.json").read_text())
+    assert re.fullmatch(r"[0-9a-f]{40}", m["git_commit"])
+    assert isinstance(m["git_dirty"], bool)
+
+
+def test_git_provenance_outside_repo_raises(tmp_path):
+    with pytest.raises(RuntimeError, match="git"):
+        git_provenance(tmp_path)
 
 
 def test_explicit_version_in_path(tmp_path):
