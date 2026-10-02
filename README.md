@@ -77,6 +77,7 @@ bundle format, and the train/serve parity guarantee.
 
 ```bash
 uv sync --all-extras                # install deps
+uv run dvc pull                     # fetch data/raw (NASA C-MAPSS files, DVC-tracked)
 
 # train and ship the LSTM for one dataset
 uv run python -m turbofan.training.train --dataset FD001
@@ -105,5 +106,19 @@ uv run ruff check src tests
 uv run ruff format --check src tests
 uv run mypy src
 ```
+
+### Data
+
+`data/raw` (the NASA C-MAPSS files) is tracked with DVC, not git — `data/raw.dvc` is the
+committed pointer. The default remote is a local directory (`../dvc-store`, sibling of the
+repo), swappable to a cloud remote later without changing how data is tracked
+(`docs/decisions.md`). Run `dvc pull` to fetch it; `dvc push` after adding or changing data.
+
+Tests marked `requires_data` (`tests/test_data_integrity.py`, `tests/test_serving_parity.py`,
+`tests/test_api.py`) need `data/raw` (the last also needs a trained bundle under `models/`).
+If it's absent they skip with reason "data not pulled" — except when `REQUIRE_DATA_TESTS=1` is
+set, which turns that into a hard failure instead of a silent skip. CI (GitHub Actions) leaves
+it unset, since it doesn't pull the data; set it in environments (e.g. Jenkins) where the data
+is expected to be present.
 
 CI (`.github/workflows/ci.yml`) runs all four on every push/PR to `master`.
