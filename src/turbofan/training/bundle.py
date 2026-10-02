@@ -191,6 +191,25 @@ def resolve_version(
     return versions[-1]
 
 
+def load_bundle_dir(d: str | Path, device: str | None = None) -> Bundle:
+    """Load a bundle from an already-resolved directory (model name read from its manifest).
+
+    Split out of ``load_bundle`` so a caller that already has the bundle's files sitting in
+    some directory — an MLflow pyfunc artifact restored under its own path, say, with no
+    ``<out_root>/<dataset>/<model>/<version>`` nesting left — can load it without needing to
+    reconstruct that nesting.
+    """
+    d = Path(d)
+    manifest = json.loads((d / MANIFEST_FILE).read_text())
+    model_name = manifest["model"]
+    mod_path, cls_name = _MODEL_REGISTRY[model_name]
+    cls = getattr(importlib.import_module(mod_path), cls_name)
+    model_path = str(d / manifest["files"]["model"])
+    model = cls.load(model_path, device=device) if model_name == "lstm" else cls.load(model_path)
+    stats = joblib.load(d / manifest["files"]["feature_state"])
+    return Bundle(model=model, stats=stats, manifest=manifest, path=d)
+
+
 def load_bundle(
     out_root: str | Path,
     dataset: str,
@@ -201,10 +220,4 @@ def load_bundle(
     """Load a bundle for inference: (model, stats, manifest, path)."""
     version = resolve_version(out_root, dataset, model_name, version)
     d = bundle_dir(out_root, dataset, model_name, version)
-    manifest = json.loads((d / MANIFEST_FILE).read_text())
-    mod_path, cls_name = _MODEL_REGISTRY[model_name]
-    cls = getattr(importlib.import_module(mod_path), cls_name)
-    model_path = str(d / manifest["files"]["model"])
-    model = cls.load(model_path, device=device) if model_name == "lstm" else cls.load(model_path)
-    stats = joblib.load(d / manifest["files"]["feature_state"])
-    return Bundle(model=model, stats=stats, manifest=manifest, path=d)
+    return load_bundle_dir(d, device=device)
