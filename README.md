@@ -2,8 +2,9 @@
 
 Predictive maintenance on the NASA C-MAPSS turbofan dataset: predict how many operating
 cycles an aircraft engine has left before failure, from its sensor history, and serve that
-prediction as a maintenance decision — a bucket (critical / urgent / monitor / healthy) and
-a confidence band, not just a bare number.
+prediction as a maintenance decision — a bucket (critical / urgent / monitor / healthy), not
+just a bare number. (A calibrated prediction interval is planned; the earlier test-set error
+band was removed, see `docs/decisions.md` D26.)
 
 Full write-up of the reasoning behind each decision below lives in [`docs/`](docs/):
 [problem framing](docs/problem_framing.md), [architecture](docs/architecture.md),
@@ -53,9 +54,9 @@ model tuning downstream.
 **Maintenance buckets, not a raw cycle count.** Nobody scheduling maintenance on rolling
 stock works from a bare regression output. They work from an actionable category: does this
 need attention now, can it wait for the next scheduled window, or is it fine. The serving
-API's `/predict` endpoint returns `maintenance_bucket` and a `confidence` band (the shipped
-model's own measured error in that specific bucket) alongside the raw number, because the
-number alone isn't the deliverable — the decision is.
+API's `/predict` endpoint returns `maintenance_bucket` alongside the raw number, because the
+number alone isn't the deliverable — the decision is. Its `confidence.error_band_cycles` is
+`null` until calibrated prediction intervals exist (D26).
 
 ## Project layout
 

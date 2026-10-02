@@ -53,9 +53,9 @@ def _synthetic_raw_df(final_ruls: list[int], cycles_per_unit: int, seed: int) ->
 def trained_bundle_dir(tmp_path_factory: pytest.TempPathFactory) -> str:
     """Train a tiny LSTM on synthetic data and write it as a models/ bundle.
 
-    final_ruls span critical/urgent/monitor/healthy so every maintenance bucket in
-    the fitted metrics is a real number, not the NaN per_bucket_metrics returns for
-    an empty bucket (service.py would otherwise hand back a null confidence band).
+    final_ruls span critical/urgent/monitor/healthy so every maintenance bucket in the
+    recorded metrics is a real number, not the NaN per_bucket_metrics returns for an
+    empty bucket.
     """
     df = _synthetic_raw_df(final_ruls=[10, 30, 70, 120], cycles_per_unit=40, seed=0)
     feat, stats = add_features(df, KEEP, "FD001")
@@ -124,11 +124,12 @@ def test_predict_valid_returns_200(client):
     assert 0.0 <= data["predicted_rul"] <= 125.0
 
 
-def test_predict_confidence_has_band(client):
+def test_predict_confidence_band_is_pending(client):
+    """The test-set RMSE band is gone (D26); null until calibrated intervals exist."""
     r = client.post("/predict", json={"cycles": _cycles(SEQ_LEN + 5)})
     conf = r.json()["confidence"]
-    assert "error_band_cycles" in conf
-    assert "basis" in conf
+    assert conf["error_band_cycles"] is None
+    assert conf["basis"] == "pending calibrated intervals"
 
 
 def test_predict_short_history_returns_400(client):

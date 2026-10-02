@@ -111,5 +111,5 @@ A raw predicted-RUL number in cycles isn't itself a decision. `config.MAINTENANC
 maps a prediction into four actionable bands — critical (0–25), urgent (25–50), monitor
 (50–100), healthy (100+) — the same shape a maintenance scheduler actually works with:
 which of these needs attention now, which can wait, which is fine. The serving API returns
-the bucket plus a confidence band (the shipped model's own measured test-set RMSE inside
-that bucket), not just a bare number.
+the bucket, not just a bare number. Its confidence band is `null` until calibrated
+prediction intervals exist (`docs/decisions.md` D26; the earlier band was test-set RMSE).

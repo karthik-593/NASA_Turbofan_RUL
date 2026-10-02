@@ -96,7 +96,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 
 | ID | Decision | Evidence | Status |
 |---|---|---|---|
-| D26 | `/predict` confidence band = shipped model's test-set RMSE in the predicted bucket (`serving/service.py:49`) | Interval calibrated on the test set (violates rule 3). Also mixes bases: RMSE is bucketed by *true* RUL but looked up by *predicted* bucket. No coverage measured. **Replaced (2026-10-03, pending implementation):** this band is removed; a later stage calibrates conformal prediction intervals instead (not yet designed — no evidence cited here until it is). | REMOVED |
+| D26 | `/predict` confidence band = shipped model's test-set RMSE in the predicted bucket (`serving/service.py:49`) | Interval calibrated on the test set (violates rule 3). Also mixes bases: RMSE is bucketed by *true* RUL but looked up by *predicted* bucket. No coverage measured. **Removed 2026-10-03:** `/predict` now returns `error_band_cycles: null`, `basis: "pending calibrated intervals"` (`tests/test_api.py::test_predict_confidence_band_is_pending`); a later stage calibrates conformal prediction intervals instead (not yet designed — no evidence cited here until it is). | REMOVED |
 | D27 | Feature state (`stats`) shipped inside the model bundle; serving reuses it, never re-fits | `tests/test_serving_parity.py` (bit-identical); `tests/test_bundle.py::test_load_stats_roundtrip`. | LOCKED |
 | D28 | Bundle version = UTC timestamp; `latest` = lexical max | `tests/test_bundle.py::test_load_picks_latest`. | LOCKED |
 | D29 | Docker installs CPU-only torch ("~700MB smaller", `docs/architecture.md`) | Size claim not measured in repo. | REVISIT |
@@ -131,7 +131,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | Rule | Violation |
 |---|---|
 | 2 | **Partially resolved**: `reports/` exists (`artifact_inventory.md`, `legacy/`), but analysis results generally still live in notebook outputs, not written there as a matter of course. |
-| 3 | No `final_eval`. Test set is read by `evaluation/comparison.py` (selection), `training/train.py` (every training run scores on test and writes it to the manifest), nb02 (tuning/ablation), and `serving/service.py` (confidence band from test metrics). `tracking.run()` tags every `comparison.py` run `legacy_test_selection` (D25a), never `final_test`, precisely because none of these reads qualify as the sealed one — there is nothing in the repo yet that would earn that tag. |
+| 3 | No `final_eval`. Test set is read by `evaluation/comparison.py` (selection), `training/train.py` (every training run scores on test and writes it to the manifest) and nb02 (tuning/ablation). (`serving/service.py` no longer reads test metrics — D26 removed 2026-10-03.) `tracking.run()` tags every `comparison.py` run `legacy_test_selection` (D25a), never `final_test`, precisely because none of these reads qualify as the sealed one — there is nothing in the repo yet that would earn that tag. |
 | 4 | No reported number carries a bootstrap CI; most omit n. |
 | 5 | No `params.yaml`; `config.py` constants (incl. D05 KMeans settings) are the interim single source. Literals still in `src/`: D06, D20–D22, D24 seeds. |
 | 6 | **Resolved 2026-10-02** for the pieces this rule names: `tracking.run()` logs git SHA + dirty flag and the DVC data hash (D32/D33) on every tracked run in `train.py`/`comparison.py`. Still open: nothing registers a model (D33's registry code path is tested but unused), and `final_test` is not produced by anything yet (see rule 3's row below). |

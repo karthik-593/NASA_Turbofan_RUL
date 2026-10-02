@@ -1,7 +1,7 @@
 """Pydantic schemas for the inference API.
 
 The request is an engine's recent cycle history; the response is RUL plus a maintenance
-bucket and a confidence band grounded in the shipped artifact's measured error.
+bucket. The confidence band is null until calibrated prediction intervals exist (D26).
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ class PredictRequest(BaseModel):
 
 class Confidence(BaseModel):
     error_band_cycles: float | None = Field(
-        None, description="+-cycles: the shipped model's test RMSE in this RUL bucket"
+        None, description="+-cycles; null until calibrated prediction intervals exist (D26)"
     )
     basis: str
 

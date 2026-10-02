@@ -20,6 +20,8 @@ from turbofan.models.lstm_model import make_last_windows
 from turbofan.serving.schemas import CycleReading
 from turbofan.training.bundle import Bundle
 
+PENDING_BASIS = "pending calibrated intervals"
+
 
 class ShortHistory(ValueError):
     """Raised when fewer than SEQ_LEN cycles are supplied."""
@@ -45,15 +47,13 @@ def predict_rul(cycles: Sequence[CycleReading], bundle: Bundle) -> dict[str, Any
     X_w, _units = make_last_windows(feat, SENSOR_N_COLS, SEQ_LEN)
     rul = float(bundle.model.predict(X_w)[0])
 
-    bucket = maintenance_bucket(rul)
-    band = bundle.manifest.get("metrics", {}).get("test", {}).get(f"{bucket}_rmse")
+    # No error band until calibrated intervals exist (D26): the old band was the shipped
+    # model's test-set RMSE per bucket — calibrated on the test set (rule 3) and looked up by
+    # predicted rather than true bucket.
     return {
         "predicted_rul": round(rul, 2),
-        "maintenance_bucket": bucket,
-        "confidence": {
-            "error_band_cycles": round(band, 2) if band is not None else None,
-            "basis": "test-set RMSE in this RUL bucket for the shipped artifact",
-        },
+        "maintenance_bucket": maintenance_bucket(rul),
+        "confidence": {"error_band_cycles": None, "basis": PENDING_BASIS},
         "n_cycles_used": SEQ_LEN,
         "dataset": dataset,
         "model_version": bundle.manifest["version"],
