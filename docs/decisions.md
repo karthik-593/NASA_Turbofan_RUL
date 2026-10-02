@@ -8,6 +8,8 @@ notebooks they cite.
 - `LOCKED` — supported by a computed result in this repo (cited).
 - `ASSUMPTION` — adopted without evidence; the row states how it will be tested.
 - `REVISIT` — currently in use, not yet supported by admissible in-repo evidence.
+- `INVALID` — a result exists but measures the wrong thing or was computed incorrectly; not
+  usable as evidence for any decision, regardless of admissibility.
 
 Evidence that came from the NASA test set (`test_FD00x.txt` / `RUL_FD00x.txt`) is cited for
 traceability but is **not admissible** for selection, tuning or calibration (rule 3).
@@ -42,7 +44,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 
 | ID | Decision | Evidence | Status |
 |---|---|---|---|
-| D07 | 3 features per kept sensor: normalized value, rolling mean, rolling slope → 42 (`config.FEAT_COLS`) | nb01 cell-25: RF on these features, FD001, 20 val engines, all-rows RMSE 16.9 vs mean baseline 41.5 — shows the set carries signal, not that it beats alternatives; no CI. nb02 cell-15 EWM ablation (crit RMSE 9.62 vs 8.96) was measured on FD001 **test** (critical n=19), no CI — inadmissible. | REVISIT |
+| D07 | 3 features per kept sensor: normalized value, rolling mean, rolling slope → 42 (`config.FEAT_COLS`); richer families (rolling min/max/std, multiple windows, EWM, interactions, PCA health index) excluded | nb01 cell-25: RF on these features, FD001, 20 val engines, all-rows RMSE 16.9 vs mean baseline 41.5 — shows the set carries signal, not that it beats alternatives; no CI. nb02 cell-15 EWM ablation (crit RMSE 9.62 vs 8.96) was measured on FD001 **test** (critical n=19), no CI — inadmissible. `reports/artifact_inventory.md` (2026-10-02): a removed 258-feature pipeline scored test crit RMSE 3.68/4.12/4.22/7.46 (FD001–FD004) — better than this 42-feature set's 8.96/5.68/4.59/8.64 on every dataset. Single run, test-set, no CI — not usable for selection, but the drop to 42 features has never been shown harmless. | REVISIT |
 | D08 | Rolling window = 20 cycles (`config.WINDOW`) | None; no other window evaluated. | REVISIT |
 | D09 | Excluded: rolling min/max/std, FFT, lags, sensor interactions, PCA health index | Argued a priori in nb01 cell-21 / `problem_framing.md`; nothing computed. | REVISIT |
 | D10 | LSTM input = 14 normalized channels over a 30-cycle sequence (`config.SEQ_LEN`) | None; no other length evaluated. | REVISIT |
@@ -76,6 +78,8 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | D23 | XGBoost tuning: 20 TPE trials per dataset, objective = val-instance global RMSE (nb02) | nb02 cell-07: FD001 best val RMSE 16.89 (n=500 instances). Objective differs from headline metric (D18). Resulting models were scored on test (nb02 cell-14). | REVISIT |
 | D24 | Robustness check: 5 model seeds (42, 7, 123, 2024, 99); "separated beyond ±1σ" as the criterion | Seed variance only, split held fixed, no engine-resampling CI; ±1σ is not a significance criterion. | REVISIT |
 | D25 | Ship LSTM to production | nb03 / `docs/results.md`: 5-seed pooled crit RMSE 4.65 ± 1.53 (LSTM) vs 6.92 ± 1.54 (XGBoost). Computed on the **test set** — selection on test violates rule 3; no n or bootstrap CI reported. Must be re-derived on validation. | REVISIT |
+| D30 | `models/cv_results_FD001.joblib` — 5-fold CV, reported as `critical_rmse` 2.94 ± 0.61 | `reports/artifact_inventory.md`: every fold's `n_engines`=20 and `late_pct` 95–100%, and `critical_rmse` equals the fold's overall `rmse`. Consistent with scoring each run-to-failure validation engine only at its last cycle, where true RUL is always 0 — i.e. error-at-failure, not RUL estimation across the critical zone. No producing code survives to confirm the exact protocol. | INVALID |
+| D31 | Asymmetric training loss for XGBoost (penalize late predictions more than early) | Run once, pre-protocol-v2, against the removed 258-feature pipeline, not the current 42-feature set (`xgboost_FD001_asym.pkl`, `hardened_all_results.joblib`; recovered in `reports/artifact_inventory.md`; notebook claim corrected in `notebooks/02_modeling.ipynb` 2026-10-02). Result: lowers late-prediction rate on all four datasets (e.g. FD001 48.0% vs 60.0% symmetric) at the cost of a worse NASA score on three of four (e.g. FD001 S=428 vs 273); FD003 improved on both. Test-set, single run, no CI — not admissible, and not re-derived on the deployed feature set. | run, pending decision-cost evaluation |
 
 ## Serving and packaging
 
@@ -95,7 +99,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | X03 | `problem_framing.md` says "the model never sees test-set statistics at any point". True for normalization; false for selection — test labels drove model selection (D25), the EWM ablation (D07) and the serving band (D26). | D07, D25, D26 |
 | X04 | Sensor list derived from FD001 only, presented as dataset-wide. | D02b |
 | X05 | `RUL_CAP` was defined in `config.py`, `models/xgboost_model.py`, `models/baselines.py` and `data/loader.py`. **Resolved 2026-10-02:** all import from `config`. | D01, rule 5 |
-| X06 | D07/D09 say richer feature families (rolling min/max/std, multiple windows, EWM, interactions, PCA health index, cycle count) are unmotivated. Untracked artifacts from a removed 258-feature pipeline scored test crit RMSE 3.68 / 4.12 / 4.22 / 7.46 (FD001–FD004), vs 8.96 / 5.68 / 4.59 / 8.64 for the tuned 42-feature XGBoost and 3.14 / 5.04 / 3.77 / 6.64 for the shipped LSTM (5-seed mean). Test-set, single run, no CI — inadmissible, but the lean-set decision was never shown to be harmless. See `reports/artifact_inventory.md`. | D07, D09, D25 |
+| X06 | D07/D09 say richer feature families are unmotivated; a removed 258-feature pipeline's test-set scores beat the current 42-feature set on every dataset. See D07 for the numbers and `reports/artifact_inventory.md` for the source. | D07, D09, D25 |
 
 ## Known rule violations (current state)
 
