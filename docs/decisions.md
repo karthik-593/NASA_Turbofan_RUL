@@ -90,6 +90,12 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | D28 | Bundle version = UTC timestamp; `latest` = lexical max | `tests/test_bundle.py::test_load_picks_latest`. | LOCKED |
 | D29 | Docker installs CPU-only torch ("~700MB smaller", `docs/architecture.md`) | Size claim not measured in repo. | REVISIT |
 
+## Data infrastructure
+
+| ID | Decision | Evidence | Status |
+|---|---|---|---|
+| D32 | DVC remote for `data/raw` is a local directory (`../dvc-store`, sibling of the repo), not cloud storage | No evidence needed or applicable — this is an infrastructure choice, not a modeling claim. Adopted because the only consumer today is a single local checkout; untested with a second machine or a CI runner pulling data. **Test plan:** swap to a cloud remote (e.g. S3/GCS) once Jenkins or any CI/remote runner needs `dvc pull` to work outside this machine; `dvc remote add`/`modify` changes only `.dvc/config`, not how data is tracked (`data/raw.dvc` is unaffected). | ASSUMPTION |
+
 ## Contradictions found while seeding (rule 9)
 
 | ID | Contradiction | Affects |
@@ -109,6 +115,6 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | 3 | No `final_eval`. Test set is read by `evaluation/comparison.py` (selection), `training/train.py` (every training run scores on test and writes it to the manifest), nb02 (tuning/ablation), and `serving/service.py` (confidence band from test metrics). |
 | 4 | No reported number carries a bootstrap CI; most omit n. |
 | 5 | No `params.yaml`; `config.py` constants (incl. D05 KMeans settings) are the interim single source. Literals still in `src/`: D06, D20–D22, D24 seeds. |
-| 6 | No MLflow logging, no DVC. |
+| 6 | No MLflow logging. DVC now tracks `data/raw` (D32) — `data/raw.dvc`'s hash is available, but no training run yet logs it anywhere. |
 | 7 | Tracked notebooks contain outputs. |
 | 8 | `features/engineering.py` silent `fillna` fallbacks (D06). |
