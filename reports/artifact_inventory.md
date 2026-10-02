@@ -9,7 +9,7 @@ the only provenance available.
 | Group | Files | Producing code in `src/`? | Producing code anywhere in repo? |
 |---|---|---|---|
 | A. Current bundles | `models/FD001/lstm/<version>/` ×2 | Yes — `training/train.py` | — |
-| B. Notebook-02 tuned XGBoost (42 features) | `xgboost_FD00{1-4}.pkl`, `features_FD00{1-4}.joblib` | No | Yes — `notebooks/02_modeling.ipynb` cells 07, 13 |
+| B. Notebook-02 tuned XGBoost (42 features) | `xgboost_FD00{1-4}.pkl`, `features_FD00{1-4}.joblib` | No | Yes — `notebooks/archive/02_modeling.ipynb` cells 07, 13 |
 | C. Pre-refactor 258-feature pipeline | `xgboost_FD001_{base,asym,quantile,healthgate}.pkl`, `features_FD001_{asym,base}.joblib`, `lstm_FD00{1-4}.pt`, `comparison_results.joblib`, `hardened_all_results.joblib`, `cv_results_FD001.joblib` | No | **No** — no file in the working tree or git history (`git log --all -S`) writes them |
 
 Group C comes from a feature pipeline and model wrapper that no longer exist: the pickles
@@ -33,7 +33,7 @@ Neither manifest records a git SHA (addressed in a later commit).
 
 ## B. Notebook-02 artifacts (42-feature lean set)
 
-Written by `notebooks/02_modeling.ipynb` (`model.save(MODELS / f'xgboost_{name}.pkl')`,
+Written by `notebooks/archive/02_modeling.ipynb` (`model.save(MODELS / f'xgboost_{name}.pkl')`,
 `joblib.dump(stats, ...)`). Loadable with current `XGBoostRUL`.
 
 | File | Type | Contents |

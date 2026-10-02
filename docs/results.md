@@ -1,6 +1,6 @@
 # Results
 
-All numbers below are reproduced directly from `notebooks/03_model_comparison.ipynb`
+All numbers below are reproduced directly from `notebooks/archive/03_model_comparison.ipynb`
 running against the real C-MAPSS data, via `turbofan.evaluation.comparison`. Headline
 metric is critical-zone [0–25] RMSE (lower is better); NASA score is the tiebreaker.
 
@@ -68,7 +68,7 @@ no dataset.
 prediction vs NASA ground truth, critical-zone RMSE as the headline metric.
 
 The LSTM won *untuned*, against a *tuned* XGBoost — the 20-trial per-dataset Optuna search
-in `notebooks/02_modeling.ipynb` moved XGBoost's mean critical RMSE by roughly 0.04 cycles,
+in `notebooks/archive/02_modeling.ipynb` moved XGBoost's mean critical RMSE by roughly 0.04 cycles,
 because it optimized global validation RMSE, not the critical zone. Its tuning edge on the
 metric that actually matters here is empirically zero; tuning the LSTM would likely widen
 the gap further, not close it.
