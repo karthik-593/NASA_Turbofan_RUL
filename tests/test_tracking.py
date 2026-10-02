@@ -195,6 +195,29 @@ class TestRun:
         child_run = mlflow.MlflowClient(tracking_uri=tracking_uri).get_run(child_id)
         assert child_run.data.tags["mlflow.parentRunId"] == parent_id
 
+    def test_uses_default_experiment_name(self, tracking_uri: str) -> None:
+        with tracking.run(dataset="FD001", model="lstm", seed=0, run_type="cv") as active:
+            assert active is not None
+            exp_id = active.info.experiment_id
+
+        client = mlflow.MlflowClient(tracking_uri=tracking_uri)
+        assert client.get_experiment(exp_id).name == tracking.DEFAULT_EXPERIMENT_NAME
+
+    def test_creates_experiment_named_by_env_var(
+        self, tracking_uri: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MLFLOW_EXPERIMENT_NAME", "my-custom-experiment")
+        client = mlflow.MlflowClient(tracking_uri=tracking_uri)
+        assert client.get_experiment_by_name("my-custom-experiment") is None
+
+        with tracking.run(dataset="FD001", model="lstm", seed=0, run_type="cv") as active:
+            assert active is not None
+            exp_id = active.info.experiment_id
+
+        exp = client.get_experiment_by_name("my-custom-experiment")
+        assert exp is not None
+        assert exp.experiment_id == exp_id
+
 
 # -- pyfunc round-trip --------------------------------------------------------------------
 
@@ -220,11 +243,13 @@ class TestPyfuncRoundTrip:
     def test_log_register_alias_load_predict(self, tracking_uri: str, tmp_path: Path) -> None:
         """Full round-trip: log as pyfunc, register, set alias, load back, predict —
         exactly what a later 'promote to challenger' step would do."""
-        # tracking_uri only sets the env var; set it explicitly here too since this test
-        # calls mlflow.* directly rather than through tracking.run() (which does this
-        # itself) — otherwise a global URI left behind by an earlier test in the same
-        # process could still be active.
+        # tracking_uri only sets the env var; set the URI and experiment explicitly here
+        # too, since this test calls mlflow.* directly rather than through tracking.run()
+        # (which does both itself) — otherwise a global URI/experiment left active by an
+        # earlier test in the same process could still be picked up, pointing this test's
+        # mlflow.start_run() at a store/experiment that doesn't exist under tracking_uri.
         mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(tracking.DEFAULT_EXPERIMENT_NAME)
         bundle_dir, feat = _train_tiny_bundle(tmp_path / "bundle_root")
 
         with mlflow.start_run():

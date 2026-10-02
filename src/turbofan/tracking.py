@@ -26,6 +26,10 @@ Two concerns live here:
    ``http://localhost:5000``), so a run is never silently un-logged. Pass ``track=False``
    (``--no-track`` in ``training/train.py``) to skip tracking entirely.
 
+   Every run lands in a named experiment (``MLFLOW_EXPERIMENT_NAME``, default
+   ``turbofan-rul``), created if it doesn't exist yet — not whatever "Default" happens to
+   be active on the tracking server.
+
 2. ``BundleModel`` / ``log_production_model`` / ``register_production_model`` — an
    ``mlflow.pyfunc`` wrapper around a turbofan artifact bundle (model + feature_state +
    manifest, see ``training.bundle``), so the exact same bundle training writes and
@@ -71,6 +75,7 @@ __all__ = [
 RunType = Literal["cv", "legacy_test_selection", "final_test", "train_prod"]
 
 DEFAULT_TRACKING_URI = "http://localhost:5000"
+DEFAULT_EXPERIMENT_NAME = "turbofan-rul"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _TRACKED_LIBS = ("mlflow", "torch", "xgboost", "scikit-learn", "numpy", "pandas")
 
@@ -120,6 +125,10 @@ def _dvc_data_hash(dvc_file: Path | None = None) -> str:
 
 def _tracking_uri() -> str:
     return os.environ.get("MLFLOW_TRACKING_URI", DEFAULT_TRACKING_URI)
+
+
+def _experiment_name() -> str:
+    return os.environ.get("MLFLOW_EXPERIMENT_NAME", DEFAULT_EXPERIMENT_NAME)
 
 
 def _check_reachable(uri: str) -> None:
@@ -174,6 +183,7 @@ def run(
     uri = _tracking_uri()
     mlflow.set_tracking_uri(uri)
     _check_reachable(uri)
+    mlflow.set_experiment(_experiment_name())
 
     # Gather everything before opening the run so a missing/bad provenance source fails
     # fast, with no half-populated run left behind.
