@@ -88,8 +88,14 @@ def _config_params() -> dict[str, str]:
     """Every top-level constant in turbofan.config (its UPPER_SNAKE_CASE names),
     stringified for mlflow.log_params. params.yaml replaces this as the source of
     truth in a later step; for now config.py is read directly so nothing drifts
-    between what's logged and what the code actually ran with."""
-    return {name: str(value) for name, value in vars(cfg).items() if name.isupper()}
+    between what's logged and what the code actually ran with.
+
+    Prefixed with ``cfg_`` so e.g. config.SEED (the registry's default seed) can never
+    collide with this run's own ``seed`` param — MLflow's file-store backend stores each
+    param as a same-named file, and 'SEED' vs 'seed' collide on a case-insensitive
+    filesystem (Windows, default macOS).
+    """
+    return {f"cfg_{name}": str(value) for name, value in vars(cfg).items() if name.isupper()}
 
 
 def _dvc_data_hash(dvc_file: Path | None = None) -> str:

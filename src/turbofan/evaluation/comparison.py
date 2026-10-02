@@ -23,10 +23,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
+import mlflow
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from turbofan import tracking
 from turbofan.config import (
     DATASETS,
     FEAT_COLS,
@@ -159,16 +161,28 @@ def run_comparison(
     raw: str | Path,
     datasets: tuple[str, ...] = DATASETS,
     registry: dict[str, Candidate] | None = None,
+    seed: int = SEED,
     verbose: bool = True,
+    track: bool = True,
 ) -> pd.DataFrame:
-    """Run every candidate over every dataset under one protocol; return tidy rows."""
-    registry = registry or build_registry()
+    """Run every candidate over every dataset under one protocol; return tidy rows.
+
+    Each (dataset, model) cell is one MLflow run tagged ``run_type='cv'`` — this is a
+    model-selection screen, not the sealed final-test read (see ``tracking.run``'s
+    docstring on why that tag, not ``final_test``, despite scoring against the test set).
+    """
+    registry = registry or build_registry(seed=seed)
     rows = []
     for name in datasets:
         feat_tr, feat_va, feat_te, rul_te, _ = prepare(name, raw)
         for mname, cand in registry.items():
-            y, pred = _evaluate(cand.factory(), cand.kind, feat_tr, feat_va, feat_te, rul_te)
-            row = score(y, pred)
+            with tracking.run(
+                dataset=name, model=mname, seed=seed, run_type="cv", track=track
+            ) as active_run:
+                y, pred = _evaluate(cand.factory(), cand.kind, feat_tr, feat_va, feat_te, rul_te)
+                row = score(y, pred)
+                if active_run is not None:
+                    mlflow.log_metrics({k: v for k, v in row.items() if isinstance(v, int | float)})
             rows.append({"dataset": name, "model": mname, **row})
             if verbose:
                 crit, nasa = row["critical_rmse"], row["nasa"]
@@ -202,6 +216,7 @@ def run_comparison_multiseed(
     models: tuple[str, ...] = ("xgboost", "lstm"),
     datasets: tuple[str, ...] = DATASETS,
     verbose: bool = True,
+    track: bool = True,
 ) -> pd.DataFrame:
     """Re-run ``models`` over ``seeds`` to band the headline metric.
 
@@ -210,19 +225,56 @@ def run_comparison_multiseed(
 
     Cost note: this is ``len(seeds) * len(datasets)`` fits per model. The LSTM fits on
     FD002/FD004 dominate — start with 3 seeds for a fast first pass if needed.
+
+    Each (dataset, model) pair gets one MLflow summary run (mean/std of critical/global
+    RMSE and NASA score across seeds), with each seed logged as a nested child run —
+    both tagged ``run_type='cv'`` (see ``run_comparison`` on why not ``final_test``).
     """
     rows = []
     for name in datasets:
         feat_tr, feat_va, feat_te, rul_te, _ = prepare(name, raw)
-        for seed in seeds:
-            reg = build_registry(seed=seed)
-            for mname in models:
-                cand = reg[mname]
-                y, pred = _evaluate(cand.factory(), cand.kind, feat_tr, feat_va, feat_te, rul_te)
-                row = score(y, pred)
-                rows.append({"dataset": name, "model": mname, "seed": seed, **row})
-                if verbose:
-                    print(f"{name:6s} {mname:8s} seed={seed:<5d} crit={row['critical_rmse']:6.2f}")
+        for mname in models:
+            seed_rows: list[dict[str, Any]] = []
+            with tracking.run(
+                dataset=name,
+                model=mname,
+                seed=-1,
+                run_type="cv",
+                track=track,
+                extra_tags={"multiseed_summary": "true"},
+            ) as summary_run:
+                for seed in seeds:
+                    cand = build_registry(seed=seed)[mname]
+                    with tracking.run(
+                        dataset=name,
+                        model=mname,
+                        seed=seed,
+                        run_type="cv",
+                        track=track,
+                        nested=summary_run is not None,
+                    ) as active_run:
+                        y, pred = _evaluate(
+                            cand.factory(), cand.kind, feat_tr, feat_va, feat_te, rul_te
+                        )
+                        row = score(y, pred)
+                        if active_run is not None:
+                            mlflow.log_metrics(
+                                {k: v for k, v in row.items() if isinstance(v, int | float)}
+                            )
+                    seed_row = {"dataset": name, "model": mname, "seed": seed, **row}
+                    seed_rows.append(seed_row)
+                    rows.append(seed_row)
+                    if verbose:
+                        print(
+                            f"{name:6s} {mname:8s} seed={seed:<5d} crit={row['critical_rmse']:6.2f}"
+                        )
+                if summary_run is not None:
+                    df_seed = pd.DataFrame(seed_rows)
+                    summary_metrics = {}
+                    for col in ("critical_rmse", "global_rmse", "nasa"):
+                        summary_metrics[f"{col}_mean"] = float(df_seed[col].mean())
+                        summary_metrics[f"{col}_std"] = float(df_seed[col].std())
+                    mlflow.log_metrics(summary_metrics)
         if verbose:
             print(f"-- {name} done ({len(seeds)} seeds) --")
     return pd.DataFrame(rows)
