@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import platform
 import subprocess
 from collections import namedtuple
@@ -82,12 +83,48 @@ def _git(repo_dir: Path, *args: str) -> str:
     return res.stdout.strip()
 
 
+def _try_git_sha(repo_dir: Path) -> str | None:
+    """HEAD SHA, or None if git is missing or ``repo_dir`` isn't a git checkout."""
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None
+    return res.stdout.strip() if res.returncode == 0 else None
+
+
+_TRUTHY_ENV = {"1", "true", "yes"}
+
+
 def git_provenance(repo_dir: Path | None = None) -> dict[str, str | bool]:
-    """Commit SHA of the code, and whether tracked files differ from it (untracked ignored)."""
+    """Commit SHA of the code, and whether tracked files differ from it (untracked ignored).
+
+    Falls back to the ``GIT_COMMIT`` / ``GIT_DIRTY`` env vars when ``repo_dir`` is not a git
+    checkout (e.g. a built container with the ``.git`` directory excluded) — set both, or
+    neither; a lone env var is treated as missing. Raises only if there is no git checkout
+    *and* the env vars are not set, since the manifest must not silently omit provenance.
+    """
     repo_dir = repo_dir or Path(__file__).resolve().parent
-    sha = _git(repo_dir, "rev-parse", "HEAD")
-    dirty = bool(_git(repo_dir, "status", "--porcelain", "--untracked-files=no"))
-    return {"git_commit": sha, "git_dirty": dirty}
+    sha = _try_git_sha(repo_dir)
+    if sha is not None:
+        # The checkout exists (sha succeeded); a failure here is a real anomaly, not a
+        # missing-checkout case, so let `_git` raise instead of silently treating it as clean.
+        dirty = bool(_git(repo_dir, "status", "--porcelain", "--untracked-files=no"))
+        return {"git_commit": sha, "git_dirty": dirty}
+
+    env_sha, env_dirty = os.environ.get("GIT_COMMIT"), os.environ.get("GIT_DIRTY")
+    if env_sha is not None and env_dirty is not None:
+        return {"git_commit": env_sha, "git_dirty": env_dirty.strip().lower() in _TRUTHY_ENV}
+
+    raise RuntimeError(
+        f"{repo_dir} is not a git checkout and GIT_COMMIT/GIT_DIRTY env vars are not both "
+        "set; bundles must be built from a git checkout or have both env vars set so the "
+        "manifest can record provenance"
+    )
 
 
 def new_version() -> str:

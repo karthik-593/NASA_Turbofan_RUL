@@ -5,6 +5,7 @@ Uses Ridge (CPU, fast) and synthetic data; no LSTM, no real dataset.
 
 import json
 import re
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -78,9 +79,39 @@ def test_manifest_records_git_commit_and_dirty_flag(tmp_path):
     assert isinstance(m["git_dirty"], bool)
 
 
-def test_git_provenance_outside_repo_raises(tmp_path):
-    with pytest.raises(RuntimeError, match="git"):
+def test_git_provenance_outside_repo_raises(tmp_path, monkeypatch):
+    monkeypatch.delenv("GIT_COMMIT", raising=False)
+    monkeypatch.delenv("GIT_DIRTY", raising=False)
+    with pytest.raises(RuntimeError, match="git checkout"):
         git_provenance(tmp_path)
+
+
+def test_git_provenance_falls_back_to_env_vars_outside_repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_COMMIT", "deadbeef")
+    monkeypatch.setenv("GIT_DIRTY", "true")
+    assert git_provenance(tmp_path) == {"git_commit": "deadbeef", "git_dirty": True}
+
+
+def test_git_provenance_env_dirty_false(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_COMMIT", "deadbeef")
+    monkeypatch.setenv("GIT_DIRTY", "false")
+    assert git_provenance(tmp_path) == {"git_commit": "deadbeef", "git_dirty": False}
+
+
+def test_git_provenance_raises_on_lone_env_var(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_COMMIT", "deadbeef")
+    monkeypatch.delenv("GIT_DIRTY", raising=False)
+    with pytest.raises(RuntimeError, match="git checkout"):
+        git_provenance(tmp_path)
+
+
+def test_git_provenance_prefers_real_git_checkout_over_env(monkeypatch):
+    monkeypatch.setenv("GIT_COMMIT", "deadbeef")
+    monkeypatch.setenv("GIT_DIRTY", "true")
+    repo_dir = Path(__file__).resolve().parent
+    result = git_provenance(repo_dir)
+    assert result["git_commit"] != "deadbeef"
+    assert re.fullmatch(r"[0-9a-f]{40}", result["git_commit"])
 
 
 def test_explicit_version_in_path(tmp_path):
