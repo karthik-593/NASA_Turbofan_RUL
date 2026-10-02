@@ -1,4 +1,9 @@
-"""API tests — require a trained FD001/lstm bundle under models/.
+"""API tests — the request/response contract of GET /health and POST /predict.
+
+This exercises the API contract (shapes, validation, status codes) against a tiny
+LSTM bundle trained here on synthetic data, with no data/raw or pre-trained models/
+required. Real-bundle prediction behaviour is covered by the container smoke test,
+not here.
 
 Uses fastapi.testclient.TestClient (backed by httpx) for in-process HTTP testing;
 no uvicorn process needed.
@@ -7,31 +12,18 @@ no uvicorn process needed.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from turbofan.config import KEEP, SEQ_LEN
+from turbofan.config import KEEP, RUL_CAP, SENSOR_N_COLS, SEQ_LEN
+from turbofan.evaluation.protocol import score
+from turbofan.features.engineering import add_features
+from turbofan.models.lstm_model import LSTMRUL, make_last_windows, make_sequences
 from turbofan.serving.app import app
-
-# read by the lifespan function at TestClient startup, not at import time
-os.environ.setdefault("TURBOFAN_MODELS_DIR", "models")
-os.environ.setdefault("TURBOFAN_DATASET", "FD001")
-os.environ.setdefault("TURBOFAN_MODEL", "lstm")
-
-
-def _has_bundle() -> bool:
-    root = Path("models") / "FD001" / "lstm"
-    return root.exists() and next(root.iterdir(), None) is not None
-
-
-pytestmark = [
-    pytest.mark.requires_data,
-    pytest.mark.skipif(
-        not _has_bundle(), reason="no models/FD001/lstm bundle — run train.py first"
-    ),
-]
+from turbofan.training.bundle import save_bundle
 
 
 def _cycles(n: int) -> list[dict]:  # type: ignore[type-arg]
@@ -41,8 +33,60 @@ def _cycles(n: int) -> list[dict]:  # type: ignore[type-arg]
     ]
 
 
+def _synthetic_raw_df(final_ruls: list[int], cycles_per_unit: int, seed: int) -> pd.DataFrame:
+    """Fabricated engine trajectories, one per `final_ruls` entry (its RUL at the last
+    observed cycle), spanning all four maintenance buckets. Sensor values are random
+    noise, not physically meaningful — this only has to exercise add_features'/the
+    LSTM's plumbing, not produce an accurate model."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for unit, final_rul in enumerate(final_ruls, start=1):
+        for cyc in range(1, cycles_per_unit + 1):
+            row = {"unit": unit, "cycle": cyc, "op1": 0.0, "op2": 0.0, "op3": 0.0}
+            row.update({s: float(rng.normal()) for s in KEEP})
+            row["rul"] = min(final_rul + (cycles_per_unit - cyc), RUL_CAP)
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+@pytest.fixture(scope="session")
+def trained_bundle_dir(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """Train a tiny LSTM on synthetic data and write it as a models/ bundle.
+
+    final_ruls span critical/urgent/monitor/healthy so every maintenance bucket in
+    the fitted metrics is a real number, not the NaN per_bucket_metrics returns for
+    an empty bucket (service.py would otherwise hand back a null confidence band).
+    """
+    df = _synthetic_raw_df(final_ruls=[10, 30, 70, 120], cycles_per_unit=40, seed=0)
+    feat, stats = add_features(df, KEEP, "FD001")
+
+    X, y = make_sequences(feat, SENSOR_N_COLS, SEQ_LEN)
+    model = LSTMRUL(
+        n_features=len(SENSOR_N_COLS),
+        hidden=4,
+        layers=1,
+        max_epochs=2,
+        patience=1,
+        batch_size=8,
+        seed=0,
+    )
+    model.fit(X, y, X, y)  # val = train: this is a plumbing smoke fit, not a quality one
+
+    X_last, units = make_last_windows(feat, SENSOR_N_COLS, SEQ_LEN)
+    y_last = feat.groupby("unit")["rul"].last().loc[units].to_numpy()
+    metrics = {"test": score(y_last, model.predict(X_last))}
+
+    models_dir = tmp_path_factory.mktemp("models")
+    save_bundle(models_dir, "FD001", "lstm", "v1", model, stats, seed=0, metrics=metrics)
+    return str(models_dir)
+
+
 @pytest.fixture(scope="module")
-def client():
+def client(trained_bundle_dir: str):
+    os.environ["TURBOFAN_MODELS_DIR"] = trained_bundle_dir
+    os.environ["TURBOFAN_DATASET"] = "FD001"
+    os.environ["TURBOFAN_MODEL"] = "lstm"
+    os.environ["TURBOFAN_VERSION"] = "v1"
     with TestClient(app) as c:
         yield c
 

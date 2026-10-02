@@ -114,11 +114,12 @@ committed pointer. The default remote is a local directory (`../dvc-store`, sibl
 repo), swappable to a cloud remote later without changing how data is tracked
 (`docs/decisions.md`). Run `dvc pull` to fetch it; `dvc push` after adding or changing data.
 
-Tests marked `requires_data` (`tests/test_data_integrity.py`, `tests/test_serving_parity.py`,
-`tests/test_api.py`) need `data/raw` (the last also needs a trained bundle under `models/`).
-If it's absent they skip with reason "data not pulled" — except when `REQUIRE_DATA_TESTS=1` is
-set, which turns that into a hard failure instead of a silent skip. CI (GitHub Actions) leaves
-it unset, since it doesn't pull the data; set it in environments (e.g. Jenkins) where the data
-is expected to be present.
+Tests marked `requires_data` (`tests/test_data_integrity.py`, `tests/test_serving_parity.py`)
+need `data/raw`. If it's absent they skip with reason "data not pulled" — except when
+`REQUIRE_DATA_TESTS=1` is set, which turns that into a hard failure instead of a silent skip.
+CI (GitHub Actions) leaves it unset, since it doesn't pull the data; set it in environments
+(e.g. Jenkins) where the data is expected to be present. `tests/test_api.py` needs neither
+`data/raw` nor `models/` — it trains a tiny LSTM on synthetic data to test the API contract;
+real-bundle behaviour is covered by the container smoke test.
 
 CI (`.github/workflows/ci.yml`) runs all four on every push/PR to `master`.
