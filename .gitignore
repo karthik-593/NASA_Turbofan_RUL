@@ -53,6 +53,9 @@ multirun/
 .env.*
 !.env.example
 
+# Local assistant instructions
+CLAUDE.md
+
 # IDE
 .vscode/
 .idea/
