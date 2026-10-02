@@ -34,9 +34,8 @@ coverage.xml
 .dmypy.json
 dmypy.json
 
-# Data — raw files and processed artifacts are not versioned
-data/raw/*
-!data/raw/.gitkeep
+# Data — data/raw is DVC-tracked (see data/raw.dvc, data/.gitignore); processed
+# artifacts are not yet versioned
 data/processed/*
 !data/processed/.gitkeep
 
