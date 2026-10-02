@@ -154,6 +154,19 @@ class TestRun:
         assert r.data.params["seed"] == "7"
         assert r.data.params["cfg_RUL_CAP"] == "125.0"
 
+    def test_legacy_test_selection_run_type_accepted(self, tracking_uri: str) -> None:
+        """evaluation.comparison tags its runs this way, not 'cv' — see its docstring:
+        it scores against the test set during selection, so it isn't valid evidence and
+        must not be mistaken for a protocol-v2-clean 'cv' screen."""
+        with tracking.run(
+            dataset="FD001", model="xgboost", seed=1, run_type="legacy_test_selection"
+        ) as active:
+            assert active is not None
+            run_id = active.info.run_id
+
+        r = mlflow.MlflowClient(tracking_uri=tracking_uri).get_run(run_id)
+        assert r.data.tags["run_type"] == "legacy_test_selection"
+
     def test_extra_params_and_tags_logged(self, tracking_uri: str) -> None:
         with tracking.run(
             dataset="FD001",

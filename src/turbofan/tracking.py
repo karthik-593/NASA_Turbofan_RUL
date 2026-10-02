@@ -7,14 +7,19 @@ Two concerns live here:
    ``turbofan.config`` value, library versions, dataset/model/seed) plus a ``run_type``
    tag distinguishing what the run is for:
 
-   - ``cv``         — a model-selection/robustness screen (``evaluation.comparison``).
-   - ``final_test`` — the one sealed read of the NASA test set per locked candidate
-                       (CLAUDE.md rule 3). Nothing in this repo produces this tag yet —
-                       ``comparison.py`` currently reads the test set during screening,
-                       which is exactly the rule-3 violation ``docs/decisions.md``
-                       already flags, so those runs are tagged ``cv``, not ``final_test``,
-                       to avoid overstating them as the sealed evaluation they are not.
-   - ``train_prod`` — ``training/train.py``, which ships a bundle.
+   - ``cv``                     — a protocol-v2 model-selection/robustness screen that
+                                   never reads the sealed test set. Reserved: nothing in
+                                   this repo produces it yet.
+   - ``legacy_test_selection``  — pre-protocol-v2 runs that used the test set for
+                                   selection; not valid evidence. ``evaluation.comparison``
+                                   currently reads the test set during screening — exactly
+                                   the rule-3 violation ``docs/decisions.md`` already
+                                   flags — so those runs get this tag, not ``cv``, so they
+                                   can never be mistaken for a protocol-v2-clean screen.
+   - ``final_test``             — the one sealed read of the NASA test set per locked
+                                   candidate (CLAUDE.md rule 3). Nothing in this repo
+                                   produces this tag yet.
+   - ``train_prod``             — ``training/train.py``, which ships a bundle.
 
    Tracking is opt-out, not opt-in: ``run()`` raises ``TrackingUnavailable`` unless a
    reachable MLflow backend is configured (``MLFLOW_TRACKING_URI``, default
@@ -63,7 +68,7 @@ __all__ = [
     "register_production_model",
 ]
 
-RunType = Literal["cv", "final_test", "train_prod"]
+RunType = Literal["cv", "legacy_test_selection", "final_test", "train_prod"]
 
 DEFAULT_TRACKING_URI = "http://localhost:5000"
 _REPO_ROOT = Path(__file__).resolve().parents[2]

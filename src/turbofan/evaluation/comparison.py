@@ -167,9 +167,12 @@ def run_comparison(
 ) -> pd.DataFrame:
     """Run every candidate over every dataset under one protocol; return tidy rows.
 
-    Each (dataset, model) cell is one MLflow run tagged ``run_type='cv'`` — this is a
-    model-selection screen, not the sealed final-test read (see ``tracking.run``'s
-    docstring on why that tag, not ``final_test``, despite scoring against the test set).
+    Each (dataset, model) cell is one MLflow run tagged ``run_type='legacy_test_selection'``
+    — this screen scores against the test set during selection, which is the rule-3
+    violation ``docs/decisions.md`` flags, so it is not valid evidence and must not be
+    tagged ``cv`` (reserved for a protocol-v2 screen that never reads the test set) or
+    ``final_test`` (the one sealed read per locked candidate — see ``tracking.run``'s
+    docstring).
     """
     registry = registry or build_registry(seed=seed)
     rows = []
@@ -177,7 +180,11 @@ def run_comparison(
         feat_tr, feat_va, feat_te, rul_te, _ = prepare(name, raw)
         for mname, cand in registry.items():
             with tracking.run(
-                dataset=name, model=mname, seed=seed, run_type="cv", track=track
+                dataset=name,
+                model=mname,
+                seed=seed,
+                run_type="legacy_test_selection",
+                track=track,
             ) as active_run:
                 y, pred = _evaluate(cand.factory(), cand.kind, feat_tr, feat_va, feat_te, rul_te)
                 row = score(y, pred)
@@ -228,7 +235,8 @@ def run_comparison_multiseed(
 
     Each (dataset, model) pair gets one MLflow summary run (mean/std of critical/global
     RMSE and NASA score across seeds), with each seed logged as a nested child run —
-    both tagged ``run_type='cv'`` (see ``run_comparison`` on why not ``final_test``).
+    both tagged ``run_type='legacy_test_selection'`` (see ``run_comparison`` on why not
+    ``cv`` or ``final_test``).
     """
     rows = []
     for name in datasets:
@@ -239,7 +247,7 @@ def run_comparison_multiseed(
                 dataset=name,
                 model=mname,
                 seed=-1,
-                run_type="cv",
+                run_type="legacy_test_selection",
                 track=track,
                 extra_tags={"multiseed_summary": "true"},
             ) as summary_run:
@@ -249,7 +257,7 @@ def run_comparison_multiseed(
                         dataset=name,
                         model=mname,
                         seed=seed,
-                        run_type="cv",
+                        run_type="legacy_test_selection",
                         track=track,
                         nested=summary_run is not None,
                     ) as active_run:
