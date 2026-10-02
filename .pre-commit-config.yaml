@@ -19,6 +19,15 @@ repos:
     rev: 0.9.1
     hooks:
       - id: nbstripout
+        # Narrative notebooks keep their outputs in git (decisions.md D37). Strip only what
+        # changes on every run: execution counts (stripped unless --keep-count), cell
+        # execution timestamps, widget state and kernel info.
+        args:
+          - --keep-output
+          - --extra-keys
+          - >-
+            metadata.kernelspec metadata.language_info metadata.widgets
+            cell.metadata.execution cell.metadata.ExecuteTime
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
