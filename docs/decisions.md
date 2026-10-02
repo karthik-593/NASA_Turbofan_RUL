@@ -95,6 +95,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | X03 | `problem_framing.md` says "the model never sees test-set statistics at any point". True for normalization; false for selection — test labels drove model selection (D25), the EWM ablation (D07) and the serving band (D26). | D07, D25, D26 |
 | X04 | Sensor list derived from FD001 only, presented as dataset-wide. | D02b |
 | X05 | `RUL_CAP` defined twice (`config.py:12`, `models/xgboost_model.py:27`). | D01, rule 5 |
+| X06 | D07/D09 say richer feature families (rolling min/max/std, multiple windows, EWM, interactions, PCA health index, cycle count) are unmotivated. Untracked artifacts from a removed 258-feature pipeline scored test crit RMSE 3.68 / 4.12 / 4.22 / 7.46 (FD001–FD004), vs 8.96 / 5.68 / 4.59 / 8.64 for the tuned 42-feature XGBoost and 3.14 / 5.04 / 3.77 / 6.64 for the shipped LSTM (5-seed mean). Test-set, single run, no CI — inadmissible, but the lean-set decision was never shown to be harmless. See `reports/artifact_inventory.md`. | D07, D09, D25 |
 
 ## Known rule violations (current state)
 
