@@ -75,3 +75,6 @@ files = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --cov=src/turbofan --cov-report=term-missing"
+markers = [
+    "requires_data: needs the real C-MAPSS raw files (dvc pull); see tests/conftest.py",
+]
