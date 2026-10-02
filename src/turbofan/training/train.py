@@ -14,10 +14,12 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+import mlflow
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from turbofan import tracking
 from turbofan.config import FEAT_COLS, SEED, SENSOR_N_COLS, SEQ_LEN
 from turbofan.evaluation.comparison import build_registry, prepare
 from turbofan.evaluation.protocol import predict_last_cycle, score
@@ -60,23 +62,46 @@ def main() -> None:
     ap.add_argument("--out", default="models", help="bundle output root")
     ap.add_argument("--seed", type=int, default=SEED)
     ap.add_argument("--version", default=None, help="bundle version id (default: UTC timestamp)")
+    ap.add_argument("--no-track", action="store_true", help="skip MLflow tracking for this run")
     args = ap.parse_args()
 
-    cand = build_registry(seed=args.seed)[args.model]
-    feat_tr, feat_va, feat_te, rul_te, stats = prepare(args.dataset, args.raw)
-    model, y, pred = _fit_and_eval(cand.factory(), cand.kind, feat_tr, feat_va, feat_te, rul_te)
+    with tracking.run(
+        dataset=args.dataset,
+        model=args.model,
+        seed=args.seed,
+        run_type="train_prod",
+        track=not args.no_track,
+    ) as active_run:
+        cand = build_registry(seed=args.seed)[args.model]
+        feat_tr, feat_va, feat_te, rul_te, stats = prepare(args.dataset, args.raw)
+        model, y, pred = _fit_and_eval(cand.factory(), cand.kind, feat_tr, feat_va, feat_te, rul_te)
 
-    # Each top-level key maps to a dict of named metrics (matches "test"'s shape) — a bare
-    # float here would silently violate that shape for any caller iterating metrics.items().
-    metrics: dict[str, dict[str, float]] = {"test": score(y, pred)}
-    val_loss = getattr(model, "best_val_loss_", None)
-    if val_loss is not None:
-        metrics["val"] = {"loss": float(val_loss)}
+        # Each top-level key maps to a dict of named metrics (matches "test"'s shape) — a
+        # bare float here would silently violate that shape for any caller iterating
+        # metrics.items().
+        metrics: dict[str, dict[str, float]] = {"test": score(y, pred)}
+        val_loss = getattr(model, "best_val_loss_", None)
+        if val_loss is not None:
+            metrics["val"] = {"loss": float(val_loss)}
 
-    version = args.version or new_version()
-    d = save_bundle(
-        args.out, args.dataset, args.model, version, model, stats, seed=args.seed, metrics=metrics
-    )
+        version = args.version or new_version()
+        d = save_bundle(
+            args.out,
+            args.dataset,
+            args.model,
+            version,
+            model,
+            stats,
+            seed=args.seed,
+            metrics=metrics,
+        )
+
+        if active_run is not None:
+            flat_metrics = {f"test_{k}": v for k, v in metrics["test"].items()}
+            if "val" in metrics:
+                flat_metrics["val_loss"] = metrics["val"]["loss"]
+            mlflow.log_metrics(flat_metrics)
+            mlflow.log_artifacts(str(d), artifact_path="bundle")
 
     t = metrics["test"]
     print(f"bundle         : {d}")
