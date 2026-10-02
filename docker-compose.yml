@@ -1,0 +1,28 @@
+services:
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/mlflow.Dockerfile
+    container_name: turbofan-mlflow
+    ports:
+      - "5000:5000"
+    # Relative bind mount — Docker Desktop (WSL2 or Hyper-V backend) translates this to
+    # the host path automatically, no Windows-style path needed here. Gitignored; delete
+    # ./mlflow/ locally to reset tracking state.
+    volumes:
+      - ./mlflow:/mlflow
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --serve-artifacts
+      --artifacts-destination /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+    # Model Registry (aliases, versions) requires a DB-backed store — sqlite satisfies
+    # both --backend-store-uri and the (unset, defaults-to-backend) --registry-store-uri.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

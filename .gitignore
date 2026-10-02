@@ -42,6 +42,7 @@ data/processed/*
 # MLflow
 mlruns/
 mlartifacts/
+mlflow/
 
 # Hydra outputs
 outputs/
