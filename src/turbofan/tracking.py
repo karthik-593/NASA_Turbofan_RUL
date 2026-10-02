@@ -104,8 +104,21 @@ def _config_params() -> dict[str, str]:
     collide with this run's own ``seed`` param — MLflow's file-store backend stores each
     param as a same-named file, and 'SEED' vs 'seed' collide on a case-insensitive
     filesystem (Windows, default macOS).
+
+    Set-valued constants are rendered with their members sorted: ``str()`` of a set or
+    frozenset follows hash order, which changes with PYTHONHASHSEED (randomized per
+    process), so the same config would otherwise log a different value on every run.
     """
-    return {f"cfg_{name}": str(value) for name, value in vars(cfg).items() if name.isupper()}
+    return {
+        f"cfg_{name}": _stable_str(value) for name, value in vars(cfg).items() if name.isupper()
+    }
+
+
+def _stable_str(value: object) -> str:
+    if isinstance(value, set | frozenset):
+        members = ", ".join(repr(v) for v in sorted(value))
+        return f"{type(value).__name__}({{{members}}})"
+    return str(value)
 
 
 def _dvc_data_hash(dvc_file: Path | None = None) -> str:

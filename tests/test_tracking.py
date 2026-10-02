@@ -7,6 +7,9 @@ which is exactly what the round-trip tests below need, and it needs no setup/tea
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import mlflow
@@ -100,6 +103,30 @@ class TestConfigParams:
 
     def test_includes_known_constant(self) -> None:
         assert tracking._config_params()["cfg_RUL_CAP"] == "125.0"
+
+    def test_set_valued_constant_is_sorted(self) -> None:
+        assert tracking._config_params()["cfg_MULTI_REGIME"] == "frozenset({'FD002', 'FD004'})"
+
+    def test_stable_across_hash_seeds(self) -> None:
+        """str(frozenset) follows hash order, which PYTHONHASHSEED changes per process;
+        seeds 0 and 1 give opposite raw orders for MULTI_REGIME (checked below), so the
+        logged value must still be identical across them."""
+        code = (
+            "from turbofan import config, tracking; "
+            "print(str(config.MULTI_REGIME)); "
+            "print(tracking._config_params()['cfg_MULTI_REGIME'])"
+        )
+        out = {}
+        for seed in ("0", "1"):
+            env = {**os.environ, "PYTHONHASHSEED": seed}
+            res = subprocess.run(
+                [sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True
+            )
+            out[seed] = res.stdout.splitlines()
+        raw0, logged0 = out["0"]
+        raw1, logged1 = out["1"]
+        assert raw0 != raw1, "precondition: these seeds should give different raw orders"
+        assert logged0 == logged1 == "frozenset({'FD002', 'FD004'})"
 
     def test_no_collision_with_run_metadata_keys(self) -> None:
         """Regression test: config.SEED vs a run's own 'seed' param differ only by case,
