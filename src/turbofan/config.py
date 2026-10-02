@@ -18,6 +18,11 @@ SPLIT_FRAC: float = 0.8  # train/val engine split — first-80% by engine order,
 DATASETS: tuple[str, ...] = ("FD001", "FD002", "FD003", "FD004")
 MULTI_REGIME: frozenset[str] = frozenset({"FD002", "FD004"})  # per-regime normalization datasets
 
+# KMeans regime clustering on standardized op settings (multi-regime datasets only).
+REGIME_N_CLUSTERS: int = 6
+REGIME_KMEANS_N_INIT: int = 10
+REGIME_KMEANS_SEED: int = 0
+
 # Raw column layout: unit, cycle, 3 operating settings, 21 sensors.
 COLS: list[str] = ["unit", "cycle", "op1", "op2", "op3"] + [f"s{i}" for i in range(1, 22)]
 

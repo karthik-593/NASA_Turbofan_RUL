@@ -18,7 +18,7 @@ from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-RUL_CAP = 125.0
+from turbofan.config import RUL_CAP
 
 __all__ = ["MeanBaseline", "RidgeRUL", "RandomForestRUL", "RUL_CAP"]
 

@@ -29,7 +29,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 
 | ID | Decision | Evidence | Status |
 |---|---|---|---|
-| D01 | RUL label capped at 125 (`config.RUL_CAP`; duplicated at `models/xgboost_model.py:27`) | nb01 cell-6: FD001 train lifetimes min 128 / mean 206 / max 362 cycles (n=100 engines) — shows raw RUL extends far into the healthy plateau, but does not select 125. nb01 cell-7 adopts 125 as "the conventional choice" and promises a check of when sensors start moving; that check was never run. No other cap was evaluated. | REVISIT |
+| D01 | RUL label capped at 125 (`config.RUL_CAP`) | nb01 cell-6: FD001 train lifetimes min 128 / mean 206 / max 362 cycles (n=100 engines) — shows raw RUL extends far into the healthy plateau, but does not select 125. nb01 cell-7 adopts 125 as "the conventional choice" and promises a check of when sensors start moving; that check was never run. No other cap was evaluated. | REVISIT |
 | D02a | Drop 7 near-constant sensors (s1, s5, s6, s10, s16, s18, s19) — FD001 | nb01 cell-12, FD001 train (20,631 rows): six sensors std 0.0000, s6 0.0014; next-lowest kept sensor s15 0.0375. Cutoff 1e-2 sits in that gap. | LOCKED |
 | D02b | Same 14-sensor `KEEP` list applied to FD002, FD003, FD004 | Not computed for FD002–FD004. On FD002/FD004 raw std is dominated by regime shifts, so the check must be per regime. | REVISIT |
 | D03 | Per-regime z-score for FD002/FD004; single global z-score for FD001/FD003 (`features/engineering.py`) | nb01 cell-19: qualitative plot of s2 for one FD002 engine before/after. No numeric ablation (per-regime vs global) on any metric; FD004 not inspected. README calls this the decision that "mattered more than any amount of model tuning" — unmeasured. | REVISIT |
@@ -94,7 +94,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | X02 | `docs/results.md` lists "window length (30)" as untested; the feature window is 20 (`WINDOW`) and the LSTM sequence is 30 (`SEQ_LEN`). Both are untested. | D08, D10 |
 | X03 | `problem_framing.md` says "the model never sees test-set statistics at any point". True for normalization; false for selection — test labels drove model selection (D25), the EWM ablation (D07) and the serving band (D26). | D07, D25, D26 |
 | X04 | Sensor list derived from FD001 only, presented as dataset-wide. | D02b |
-| X05 | `RUL_CAP` defined twice (`config.py:12`, `models/xgboost_model.py:27`). | D01, rule 5 |
+| X05 | `RUL_CAP` was defined in `config.py`, `models/xgboost_model.py`, `models/baselines.py` and `data/loader.py`. **Resolved 2026-10-02:** all import from `config`. | D01, rule 5 |
 | X06 | D07/D09 say richer feature families (rolling min/max/std, multiple windows, EWM, interactions, PCA health index, cycle count) are unmotivated. Untracked artifacts from a removed 258-feature pipeline scored test crit RMSE 3.68 / 4.12 / 4.22 / 7.46 (FD001–FD004), vs 8.96 / 5.68 / 4.59 / 8.64 for the tuned 42-feature XGBoost and 3.14 / 5.04 / 3.77 / 6.64 for the shipped LSTM (5-seed mean). Test-set, single run, no CI — inadmissible, but the lean-set decision was never shown to be harmless. See `reports/artifact_inventory.md`. | D07, D09, D25 |
 
 ## Known rule violations (current state)
@@ -104,7 +104,7 @@ No result in the repo yet carries a bootstrap CI (rule 4).
 | 2 | No `reports/` directory; analysis results live only in notebook outputs. |
 | 3 | No `final_eval`. Test set is read by `evaluation/comparison.py` (selection), `training/train.py` (every training run scores on test and writes it to the manifest), nb02 (tuning/ablation), and `serving/service.py` (confidence band from test metrics). |
 | 4 | No reported number carries a bootstrap CI; most omit n. |
-| 5 | No `params.yaml`. Literals in `src/`: D01 duplicate, D05, D06, D20–D22, D24 seeds. |
+| 5 | No `params.yaml`; `config.py` constants (incl. D05 KMeans settings) are the interim single source. Literals still in `src/`: D06, D20–D22, D24 seeds. |
 | 6 | No MLflow logging, no DVC. |
 | 7 | Tracked notebooks contain outputs. |
 | 8 | `features/engineering.py` silent `fillna` fallbacks (D06). |

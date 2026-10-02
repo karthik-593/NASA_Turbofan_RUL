@@ -22,6 +22,8 @@ from typing import Literal, cast
 import numpy as np
 import pandas as pd
 
+from turbofan.config import RUL_CAP
+
 # The 26 raw columns in every C-MAPSS text file (space-separated, no header).
 _COLUMN_NAMES: list[str] = [
     "unit_id",
@@ -35,8 +37,7 @@ _COLUMN_NAMES: list[str] = [
 SubDataset = Literal["FD001", "FD002", "FD003", "FD004"]
 ALL_SUBDATASETS: tuple[SubDataset, ...] = ("FD001", "FD002", "FD003", "FD004")
 
-# Standard RUL cap used across the literature.
-DEFAULT_RUL_CAP: int = 125
+DEFAULT_RUL_CAP: int = int(RUL_CAP)
 
 
 def _read_txt(path: Path) -> pd.DataFrame:

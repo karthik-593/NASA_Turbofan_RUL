@@ -24,7 +24,8 @@ import numpy as np
 import pandas as pd
 from xgboost import XGBRegressor
 
-RUL_CAP: float = 125.0
+from turbofan.config import RUL_CAP
+
 _EARLY_STOP: int = 50
 
 _DEFAULT_PARAMS: dict[str, Any] = {
