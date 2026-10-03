@@ -211,6 +211,13 @@ class TestIterationBudget:
             train_prod.iteration_budget_from_cv(tmp_path / "nope.json", "FD001", "xgboost")
 
 
+def _running_runs(uri: str) -> list[str]:
+    client = mlflow.MlflowClient(uri)
+    exp = client.get_experiment_by_name("turbofan-rul")
+    runs = client.search_runs([exp.experiment_id], max_results=10_000)
+    return [r.info.run_id for r in runs if r.info.status == "RUNNING"]
+
+
 def test_cv_select_train_prod_register_end_to_end(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -255,6 +262,8 @@ def test_cv_select_train_prod_register_end_to_end(
     tags = client.get_run(reg["mlflow_run_id"]).data.tags
     assert tags["run_type"] == "register"
     assert client.get_run(tp["mlflow_run_id"]).data.tags["run_type"] == "train_prod"
+    assert _running_runs(uri) == []  # no stage leaves a run RUNNING
+    assert mlflow.active_run() is None
 
 
 def test_train_prod_refuses_an_unlocked_spec(
@@ -364,3 +373,48 @@ def test_final_eval_refuses_a_bundle_built_from_another_spec(
     argv = ["--spec", str(ctx.spec), "--bundle", str(bundle), "--raw", str(ctx.raw), "--confirm"]
     with pytest.raises(fe.FinalEvalRefused, match="seed"):
         fe.main(argv)
+
+
+class TestForcedExit:
+    """The GPU-teardown workaround ends the process abruptly; nothing may be left RUNNING."""
+
+    def test_active_runs_are_ended_and_flushed_before_termination(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from turbofan.pipeline import __main__ as entry
+
+        uri = (tmp_path / "mlruns").as_uri()
+        mlflow.set_tracking_uri(uri)
+        mlflow.set_experiment("turbofan-rul")
+        flushed: list[str] = []
+        seen: dict[str, Any] = {}
+
+        def terminate() -> None:
+            seen["active"] = mlflow.active_run()
+            seen["running"] = _running_runs(uri)
+            seen["flushed"] = list(flushed)
+
+        monkeypatch.setattr(entry, "_cuda_used", lambda: True)
+        monkeypatch.setattr(entry, "_terminate_now", terminate)
+        monkeypatch.setattr(mlflow, "flush_async_logging", lambda: flushed.append("async"))
+        monkeypatch.setattr(mlflow, "flush_artifact_async_logging", lambda: flushed.append("art"))
+        mlflow.start_run()
+        with mlflow.start_run(nested=True):  # a leaked nested run, as after an interrupted stage
+            entry._skip_native_teardown_if_it_crashes()
+        assert seen["active"] is None and seen["running"] == []
+        assert sorted(seen["flushed"]) == ["art", "async"]
+
+    def test_without_cuda_nothing_is_ended_or_terminated(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from turbofan.pipeline import __main__ as entry
+
+        mlflow.set_tracking_uri((tmp_path / "mlruns").as_uri())
+        mlflow.set_experiment("turbofan-rul")
+        called: list[str] = []
+        monkeypatch.setattr(entry, "_cuda_used", lambda: False)
+        monkeypatch.setattr(entry, "_terminate_now", lambda: called.append("terminate"))
+        with mlflow.start_run():
+            entry._skip_native_teardown_if_it_crashes()
+            assert mlflow.active_run() is not None  # untouched
+        assert called == []

@@ -107,19 +107,26 @@ def main(argv: list[str] | None = None) -> None:
         runners[stage]()
 
 
-def _skip_native_teardown_if_it_crashes() -> None:
-    """End the process now, once a stage has succeeded and every output is written, if torch
-    initialized CUDA in it. On this Windows setup any process that trained the LSTM on the GPU
-    dies during native DLL teardown (exit 0xC0000409) after all its work is done — it predates
-    the pipeline (``run_cv --models lstm`` at 6b58534 does it, tracking on or off) — and DVC
-    would count the stage as failed. ``os._exit`` still runs the DLL detach that crashes, so on
-    Windows the process terminates itself directly. Reached only after ``main()`` returned: an
-    exception still propagates with its traceback."""
+def _cuda_used() -> bool:
     torch = sys.modules.get("torch")
-    if torch is None or not torch.cuda.is_initialized():
+    return torch is not None and bool(torch.cuda.is_initialized())
+
+
+def _end_mlflow_runs() -> None:
+    """End every still-active MLflow run and flush asynchronous logging, so a forced exit can
+    never leave a run RUNNING or drop a queued write."""
+    mlflow = sys.modules.get("mlflow")
+    if mlflow is None:
         return
-    sys.stdout.flush()
-    sys.stderr.flush()
+    while mlflow.active_run() is not None:
+        mlflow.end_run()
+    mlflow.flush_artifact_async_logging()
+    mlflow.flush_async_logging()
+
+
+def _terminate_now() -> None:
+    """Exit immediately with status 0, skipping native DLL teardown. ``os._exit`` still runs the
+    DLL detach that crashes, so on Windows the process terminates itself directly."""
     if sys.platform == "win32":
         import ctypes
 
@@ -129,6 +136,20 @@ def _skip_native_teardown_if_it_crashes() -> None:
         if not kernel32.TerminateProcess(kernel32.GetCurrentProcess(), 0):
             raise OSError(ctypes.get_last_error(), "TerminateProcess failed")
     os._exit(0)
+
+
+def _skip_native_teardown_if_it_crashes() -> None:
+    """Known issue (docs/decisions.md D50): once a stage has succeeded and every output is
+    written, end the process now if torch initialized CUDA in it — on this Windows setup such a
+    process dies during native teardown (exit 0xC0000409) after its work is done, and DVC would
+    count the stage as failed. MLflow runs are ended and flushed first. Reached only after
+    ``main()`` returned: an exception still propagates with its traceback."""
+    if not _cuda_used():
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    _end_mlflow_runs()
+    _terminate_now()
 
 
 if __name__ == "__main__":
