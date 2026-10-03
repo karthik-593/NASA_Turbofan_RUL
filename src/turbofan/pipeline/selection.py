@@ -181,6 +181,25 @@ def _headline(led: Ledger, cfg: Config) -> float:
     return float(led.configs[cfg.tag]["models"][MODEL][HEADLINE])
 
 
+def fittable_extra_sensors(
+    dataset: str, sensors: list[str]
+) -> tuple[list[str], dict[str, list[int]]]:
+    """The extra sensors ``add_features`` can normalize: not constant within any operating regime
+    (regimes fitted on all training engines, as params.yaml defines them). Returns (fittable,
+    {sensor: regimes where it is constant})."""
+    from turbofan.data.loader import load_train
+    from turbofan.features.engineering import _fit_regimes, assign_regimes
+
+    train = load_train(dataset, REPO / "data" / "raw")
+    op_sc, km = _fit_regimes(train, N_REGIMES[dataset])
+    labels = assign_regimes(train, {"op_sc": op_sc, "km": km})
+    constant = {
+        s: [r for r in range(N_REGIMES[dataset]) if train.loc[labels == r, s].nunique() < 2]
+        for s in sensors
+    }
+    return [s for s in sensors if not constant[s]], {s: v for s, v in constant.items() if v}
+
+
 def _run(led: Ledger, cfg: Config) -> None:
     led.configs[cfg.tag] = ensure(cfg)
 
@@ -230,8 +249,29 @@ def stage_a(dataset: str) -> Ledger:
     }
     if N_REGIMES[dataset] > 1:
         blocks["regime_onehot"] = ("features.regime_onehot=true",)
-    extra = PARAMS["selection"]["extra_sensors"][dataset]
-    blocks["sensors_plus"] = (f"features.extra_sensors=[{', '.join(extra)}]",)
+    extra = list(PARAMS["selection"]["extra_sensors"][dataset])
+    fittable, constant = fittable_extra_sensors(dataset, extra)
+    informational: dict[str, tuple[str, ...]] = {}
+    if constant:
+        # Deviation from the pre-registration, recorded rather than worked around (rule 9):
+        # the block as pre-registered cannot be fitted, so it is not adopted; the fittable
+        # subset is run for information only and is not eligible for adoption.
+        led.notes.append(
+            f"A3 sensors_plus [{', '.join(extra)}] is infeasible as pre-registered: "
+            + "; ".join(f"{s} is constant within regime(s) {r}" for s, r in constant.items())
+            + " on the training data, so within-regime normalization is undefined (audit §E "
+            "classed these sensors informative — contradiction flagged). Not adopted."
+        )
+        if fittable:
+            informational["sensors_plus_fittable"] = (
+                f"features.extra_sensors=[{', '.join(fittable)}]",
+            )
+            led.notes.append(
+                f"DEVIATION (informational only, not eligible for adoption): "
+                f"sensors_plus_fittable = [{', '.join(fittable)}] reported below."
+            )
+    else:
+        blocks["sensors_plus"] = (f"features.extra_sensors=[{', '.join(extra)}]",)
     a3_inc = Config(w2.tag, f"{w2.label} (base features)", w2.sets)
     a3 = {
         name: Config(f"{w2.tag}_{name}", f"{w2.label} + {name}", (*w2.sets, *sets))
@@ -241,6 +281,11 @@ def stage_a(dataset: str) -> Ledger:
         _run(led, cfg)
     rows = [compare(led, "A3", a3_inc, cfg) for cfg in a3.values()]
     adopted = [name for (name, _), r in zip(a3.items(), rows, strict=True) if r["better"]]
+    for name, sets_i in informational.items():
+        cfg_i = Config(f"{w2.tag}_{name}", f"{w2.label} + {name} (deviation)", (*w2.sets, *sets_i))
+        _run(led, cfg_i)
+        row = compare(led, "A3-informational", a3_inc, cfg_i)
+        row["eligible"] = False
     winner = a3_inc
     if len(adopted) >= 2:
         sets: list[str] = list(w2.sets)
@@ -319,6 +364,8 @@ def render(led: Ledger) -> str:
     ]
     for r in led.comparisons:
         verdict = "**better**" if r["better"] else ("worse" if r["worse"] else "not different")
+        if r.get("eligible") is False:
+            verdict += " (informational, not eligible)"
         lines.append(
             f"| {r['substage']} | {r['challenger']} | {r['incumbent']} | "
             f"{_ci(r['diff'], r['diff_ci_lo'], r['diff_ci_hi'])} | "
