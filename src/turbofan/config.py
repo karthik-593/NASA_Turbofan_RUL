@@ -108,6 +108,8 @@ if not 1 <= MIN_HISTORY <= SEQ_LEN:
     raise ParamsError(f"params.yaml: serving.min_history must be in 1..seq_len, got {MIN_HISTORY}")
 
 MODEL_PARAMS: dict[str, Any] = _get(PARAMS, "models", dict)
+for _key in ("k", "kmeans_n_init", "kmeans_random_state"):
+    _get(PARAMS, f"subpopulation.{_key}", int)
 SEEDS: tuple[int, ...] = tuple(_get(PARAMS, "seeds", list))
 
 # Raw column layout: unit, cycle, 3 operating settings, 21 sensors.

@@ -88,6 +88,12 @@ buckets:                      # maintenance buckets, lower bound inclusive (D19)
   healthy: [100, .inf]
 seeds: [42, 7, 123, 2024, 99] # multi-seed robustness (D24)
 
+# -- engine subpopulations (D35): CV stratification and per-group reporting only --------
+subpopulation:
+  k: 2                        # audit §I: the permutation-supported 2-way split
+  kmeans_n_init: 10
+  kmeans_random_state: 0
+
 # -- protocol v2 placeholders (consumed later) ------------------------------------------
 cv:
   n_folds: 5
