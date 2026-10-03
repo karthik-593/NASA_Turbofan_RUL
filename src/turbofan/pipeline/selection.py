@@ -244,7 +244,6 @@ def stage_a(dataset: str) -> Ledger:
     winner = a3_inc
     if len(adopted) >= 2:
         sets: list[str] = list(w2.sets)
-        combined_name = "+".join(adopted)
         hi = [n for n in adopted if n.startswith("hi_")]
         if len(hi) == 2:
             # both health indices adopted: one column set only, so the better one enters the union
@@ -258,6 +257,7 @@ def stage_a(dataset: str) -> Ledger:
             adopted_c = adopted
         for n in adopted_c:
             sets += list(blocks[n])
+        combined_name = "+".join(adopted_c)  # the blocks actually in the union
         comb = Config(f"{w2.tag}_combined", f"{w2.label} + {combined_name}", tuple(sets))
         _run(led, comb)
         r = compare(led, "A3-combined", a3_inc, comb)
