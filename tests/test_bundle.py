@@ -12,6 +12,7 @@ import pytest
 
 from turbofan.evaluation.comparison import build_registry
 from turbofan.training.bundle import (
+    BUNDLE_SCHEMA,
     Bundle,
     git_provenance,
     load_bundle,
@@ -224,3 +225,19 @@ def test_load_specific_version(tmp_path):
     )
     b = load_bundle(tmp_path, "FD001", "ridge", version="v1")
     assert b.manifest["metrics"]["test"]["critical_rmse"] == pytest.approx(10.0)
+
+
+def test_manifest_records_regime_count(tmp_path):
+    d = save_bundle(tmp_path, "FD002", "ridge", "v1", _ridge(), _STATS, seed=42, metrics=_METRICS)
+    m = json.loads((d / "manifest.json").read_text())
+    assert m["bundle_schema"] == BUNDLE_SCHEMA
+    assert m["config"]["n_regimes"] == 6
+
+
+def test_load_refuses_older_bundle_schema(tmp_path):
+    d = save_bundle(tmp_path, "FD001", "ridge", "v1", _ridge(), _STATS, seed=42, metrics=_METRICS)
+    m = json.loads((d / "manifest.json").read_text())
+    m["bundle_schema"] = BUNDLE_SCHEMA - 1
+    (d / "manifest.json").write_text(json.dumps(m))
+    with pytest.raises(ValueError, match="retrain it"):
+        load_bundle(tmp_path, "FD001", "ridge")

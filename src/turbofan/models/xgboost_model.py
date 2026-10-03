@@ -24,24 +24,11 @@ import numpy as np
 import pandas as pd
 from xgboost import XGBRegressor
 
-from turbofan.config import RUL_CAP
+from turbofan.config import MODEL_PARAMS, RUL_CAP, SEED
 
-_EARLY_STOP: int = 50
-
-_DEFAULT_PARAMS: dict[str, Any] = {
-    "n_estimators": 500,
-    "max_depth": 6,
-    "learning_rate": 0.05,
-    "subsample": 0.8,
-    "colsample_bytree": 0.8,
-    "min_child_weight": 3,
-    "reg_alpha": 0.1,
-    "reg_lambda": 1.0,
-    "tree_method": "hist",
-    "eval_metric": "rmse",
-    "random_state": 42,
-    "n_jobs": -1,
-}
+# Wrapper defaults (params.yaml models.xgboost, D21); tuned params are merged over them.
+_EARLY_STOP: int = int(MODEL_PARAMS["xgboost"]["early_stopping_rounds"])
+_DEFAULT_PARAMS: dict[str, Any] = {**MODEL_PARAMS["xgboost"]["params"], "random_state": SEED}
 
 __all__ = ["XGBoostRUL", "RUL_CAP"]
 

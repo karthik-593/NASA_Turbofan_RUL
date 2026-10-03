@@ -4,12 +4,14 @@
 
 ```
 src/turbofan/
-├── config.py               single source of truth: RUL_CAP, WINDOW, SEQ_LEN, SEED,
-│                            SPLIT_FRAC, KEEP (14 sensors), FEAT_COLS (42), maintenance buckets
+├── config.py               reads params.yaml (repo root, the single source of every
+│                            parameter) strictly at import: RUL_CAP, WINDOW, SEQ_LEN, SEED,
+│                            SPLIT_FRAC, SENSORS/KEEP (14), N_REGIMES, FEAT_COLS (42),
+│                            model hyperparameters, maintenance buckets
 ├── data/
 │   └── loader.py            raw C-MAPSS .txt → CMAPSSDataset (train/test/rul_series)
 ├── features/
-│   └── engineering.py       add_features(): per-regime or global normalization,
+│   └── engineering.py       add_features(): per-regime normalization (k = n_regimes; k=1 = global),
 │                            rolling mean/slope → the feature set every model trains on
 ├── models/
 │   ├── baselines.py          MeanBaseline, RidgeRUL, RandomForestRUL

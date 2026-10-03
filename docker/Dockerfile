@@ -28,9 +28,12 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     TURBOFAN_MODELS_DIR=/app/models \
     TURBOFAN_DATASET=FD001 \
-    TURBOFAN_MODEL=lstm
+    TURBOFAN_MODEL=lstm     TURBOFAN_PARAMS=/app/params.yaml
 
 WORKDIR /app
+
+# turbofan.config reads every pipeline parameter from here at import (rule 5).
+COPY params.yaml ./params.yaml
 
 COPY --from=builder /opt/venv /opt/venv
 # Bake the trained bundle into the image so the deployed URL is self-contained.

@@ -18,7 +18,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from turbofan.config import RUL_CAP, SEED, SEQ_LEN
+from turbofan.config import MODEL_PARAMS, RUL_CAP, SEED, SEQ_LEN
+
+_P: dict[str, Any] = MODEL_PARAMS["lstm"]  # params.yaml models.lstm (D22)
 
 __all__ = ["LSTMRUL", "make_sequences", "make_last_windows", "SEQ_LEN", "RUL_CAP"]
 
@@ -66,9 +68,10 @@ class _Net(nn.Module):
     def __init__(
         self,
         n_features: int,
-        hidden: int = 32,
-        layers: int = 2,
-        dropout: float = 0.3,
+        hidden: int = _P["hidden"],
+        layers: int = _P["layers"],
+        dropout: float = _P["dropout"],
+        head_hidden: int = _P["head_hidden"],
     ) -> None:
         super().__init__()
         self.lstm = nn.LSTM(
@@ -78,7 +81,9 @@ class _Net(nn.Module):
             batch_first=True,
             dropout=dropout if layers > 1 else 0.0,
         )
-        self.head = nn.Sequential(nn.Linear(hidden, 16), nn.ReLU(), nn.Linear(16, 1))
+        self.head = nn.Sequential(
+            nn.Linear(hidden, head_hidden), nn.ReLU(), nn.Linear(head_hidden, 1)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out, _ = self.lstm(x)
@@ -92,13 +97,13 @@ class LSTMRUL:
     def __init__(
         self,
         n_features: int,
-        hidden: int = 32,
-        layers: int = 2,
-        dropout: float = 0.3,
-        lr: float = 1e-3,
-        max_epochs: int = 100,
-        patience: int = 10,
-        batch_size: int = 256,
+        hidden: int = _P["hidden"],
+        layers: int = _P["layers"],
+        dropout: float = _P["dropout"],
+        lr: float = _P["lr"],
+        max_epochs: int = _P["max_epochs"],
+        patience: int = _P["patience"],
+        batch_size: int = _P["batch_size"],
         seed: int = SEED,
         device: str | None = None,
     ) -> None:
@@ -130,7 +135,9 @@ class LSTMRUL:
             self.cfg["n_features"], self.cfg["hidden"], self.cfg["layers"], self.cfg["dropout"]
         ).to(self.device)
         opt = torch.optim.AdamW(self.net.parameters(), lr=self.cfg["lr"])
-        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=5, factor=0.5)
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            opt, patience=_P["lr_plateau_patience"], factor=_P["lr_plateau_factor"]
+        )
         lossf = nn.MSELoss()
         dl = DataLoader(
             TensorDataset(torch.tensor(X_tr), torch.tensor(y_tr)),
@@ -149,13 +156,13 @@ class LSTMRUL:
                 opt.zero_grad()
                 loss = lossf(self.net(xb), yb)
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
+                nn.utils.clip_grad_norm_(self.net.parameters(), _P["grad_clip_norm"])
                 opt.step()
             self.net.eval()
             with torch.no_grad():
                 vloss = lossf(self.net(Xva), yva).item()
             sched.step(vloss)
-            if vloss < best - 1e-4:
+            if vloss < best - _P["min_delta"]:
                 best = vloss
                 best_state = {k: v.cpu().clone() for k, v in self.net.state_dict().items()}
                 wait = 0

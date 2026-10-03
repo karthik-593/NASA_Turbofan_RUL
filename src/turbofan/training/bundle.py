@@ -30,7 +30,8 @@ import joblib
 
 from turbofan import config as cfg
 
-BUNDLE_SCHEMA = 2
+# 3: feature state carries a regime model for every dataset (params.yaml n_regimes, D38).
+BUNDLE_SCHEMA = 3
 MODEL_FILE = "model.bin"
 FEATURE_STATE_FILE = "feature_state.pkl"
 MANIFEST_FILE = "manifest.json"
@@ -166,6 +167,7 @@ def save_bundle(
             "window": cfg.WINDOW,
             "seq_len": cfg.SEQ_LEN,
             "keep": list(cfg.KEEP),
+            "n_regimes": cfg.N_REGIMES[dataset],
             "feat_cols": list(cfg.FEAT_COLS),
             "sensor_n_cols": list(cfg.SENSOR_N_COLS),
         },
@@ -201,6 +203,12 @@ def load_bundle_dir(d: str | Path, device: str | None = None) -> Bundle:
     """
     d = Path(d)
     manifest = json.loads((d / MANIFEST_FILE).read_text())
+    schema = manifest.get("bundle_schema")
+    if schema != BUNDLE_SCHEMA:
+        raise ValueError(
+            f"bundle {d} has bundle_schema {schema}, this code reads {BUNDLE_SCHEMA} — "
+            "its feature state or model input is incompatible; retrain it"
+        )
     model_name = manifest["model"]
     mod_path, cls_name = _MODEL_REGISTRY[model_name]
     cls = getattr(importlib.import_module(mod_path), cls_name)

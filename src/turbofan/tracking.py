@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import os
 import platform
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
@@ -94,11 +94,25 @@ def _lib_versions() -> dict[str, str | None]:
     return out
 
 
+_NOT_LOGGED = frozenset({"PARAMS", "PARAMS_ENV", "PARAMS_FILE"})
+
+
+def _flatten(d: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        key = f"{prefix}{k}"
+        if isinstance(v, Mapping):
+            out.update(_flatten(v, f"{key}."))
+        else:
+            out[key] = v
+    return out
+
+
 def _config_params() -> dict[str, str]:
-    """Every top-level constant in turbofan.config (its UPPER_SNAKE_CASE names),
-    stringified for mlflow.log_params. params.yaml replaces this as the source of
-    truth in a later step; for now config.py is read directly so nothing drifts
-    between what's logged and what the code actually ran with.
+    """What this run was configured with, stringified for mlflow.log_params: every
+    ``params.yaml`` value as ``params.<dotted.key>``, plus the scalar/list/set constants
+    ``turbofan.config`` derives from it (UPPER_SNAKE_CASE names, ``cfg_`` prefix). Dict-valued
+    constants are skipped — their contents are already logged key by key from params.yaml.
 
     Prefixed with ``cfg_`` so e.g. config.SEED (the registry's default seed) can never
     collide with this run's own ``seed`` param — MLflow's file-store backend stores each
@@ -109,9 +123,13 @@ def _config_params() -> dict[str, str]:
     frozenset follows hash order, which changes with PYTHONHASHSEED (randomized per
     process), so the same config would otherwise log a different value on every run.
     """
-    return {
-        f"cfg_{name}": _stable_str(value) for name, value in vars(cfg).items() if name.isupper()
+    out = {
+        f"cfg_{name}": _stable_str(value)
+        for name, value in vars(cfg).items()
+        if name.isupper() and name not in _NOT_LOGGED and not isinstance(value, dict)
     }
+    out.update({f"params.{k}": _stable_str(v) for k, v in _flatten(cfg.PARAMS).items()})
+    return out
 
 
 def _stable_str(value: object) -> str:

@@ -11,7 +11,7 @@ import torch
 from sklearn.cluster import KMeans
 
 from turbofan import repro
-from turbofan.config import REGIME_KMEANS_N_INIT, REGIME_KMEANS_SEED, REGIME_N_CLUSTERS
+from turbofan.config import N_REGIMES, REGIME_KMEANS_N_INIT, REGIME_KMEANS_SEED
 
 
 class TestCpuDeterministic:
@@ -42,7 +42,7 @@ class TestCpuDeterministic:
         def fit() -> tuple[np.ndarray, np.ndarray]:
             with repro.cpu_deterministic(n_threads=1):
                 km = KMeans(
-                    n_clusters=REGIME_N_CLUSTERS,
+                    n_clusters=N_REGIMES["FD002"],
                     n_init=REGIME_KMEANS_N_INIT,
                     random_state=REGIME_KMEANS_SEED,
                 ).fit(X)

@@ -99,7 +99,14 @@ class TestConfigParams:
     def test_keys_are_cfg_prefixed(self) -> None:
         params = tracking._config_params()
         assert params  # non-empty
-        assert all(k.startswith("cfg_") for k in params)
+        assert all(k.startswith(("cfg_", "params.")) for k in params)
+
+    def test_logs_every_params_yaml_value(self) -> None:
+        params = tracking._config_params()
+        assert params["params.window"] == "20"
+        assert params["params.n_regimes.FD002"] == "6"
+        assert params["params.models.lstm.hidden"] == "32"
+        assert "cfg_PARAMS" not in params and "cfg_MODEL_PARAMS" not in params
 
     def test_includes_known_constant(self) -> None:
         assert tracking._config_params()["cfg_RUL_CAP"] == "125.0"

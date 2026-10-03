@@ -18,7 +18,7 @@ from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from turbofan.config import RUL_CAP
+from turbofan.config import MODEL_PARAMS, RUL_CAP, SEED
 
 __all__ = ["MeanBaseline", "RidgeRUL", "RandomForestRUL", "RUL_CAP"]
 
@@ -73,7 +73,7 @@ class MeanBaseline:
 class RidgeRUL:
     """StandardScaler + Ridge. Tells us whether the problem needs nonlinearity."""
 
-    def __init__(self, alpha: float = 1.0):
+    def __init__(self, alpha: float = MODEL_PARAMS["ridge"]["alpha"]):
         self.model_ = make_pipeline(StandardScaler(), Ridge(alpha=alpha))
 
     def fit(
@@ -101,7 +101,12 @@ class RidgeRUL:
 class RandomForestRUL:
     """Random forest — a bagging ensemble, a different bias/variance profile than boosting."""
 
-    def __init__(self, n_estimators: int = 300, random_state: int = 42, **kw: Any) -> None:
+    def __init__(
+        self,
+        n_estimators: int = MODEL_PARAMS["rf"]["n_estimators"],
+        random_state: int = SEED,
+        **kw: Any,
+    ) -> None:
         self.model_ = RandomForestRegressor(
             n_estimators=n_estimators, random_state=random_state, n_jobs=-1, **kw
         )

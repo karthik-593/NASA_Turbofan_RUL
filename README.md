@@ -62,9 +62,9 @@ number alone isn't the deliverable — the decision is. Its `confidence.error_ba
 
 ```
 src/turbofan/
-├── config.py          single source of truth for RUL cap, sensor list, feature columns, seeds
+├── config.py          reads params.yaml (repo root) — the single source of every parameter
 ├── data/loader.py      raw C-MAPSS .txt → structured train/test/rul dataframes
-├── features/            per-regime/global normalization + rolling mean/slope
+├── features/            per-regime normalization (k = n_regimes) + rolling mean/slope
 ├── models/               MeanBaseline, RidgeRUL, RandomForestRUL, XGBoostRUL, LSTMRUL
 ├── evaluation/            metrics, scoring protocol, multi-seed model comparison
 ├── training/               CLI to fit a model and write a versioned artifact bundle

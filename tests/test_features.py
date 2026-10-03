@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from turbofan.config import FEAT_COLS, KEEP
-from turbofan.features.engineering import add_features
+from turbofan.config import FEAT_COLS, KEEP, N_REGIMES
+from turbofan.features.engineering import FEATURE_STATE_KEYS, add_features
 
 
 def _make_nb_df(n_units: int = 3, cycles_per_unit: int = 40, seed: int = 0) -> pd.DataFrame:
@@ -39,13 +40,14 @@ class TestAddFeatures:
         out, _ = add_features(_make_nb_df(), KEEP, "FD001")
         assert not out[FEAT_COLS].isnull().any().any()
 
-    def test_returns_stats_dict_with_multi_key(self) -> None:
+    def test_returns_complete_feature_state(self) -> None:
         _, stats = add_features(_make_nb_df(), KEEP, "FD001")
-        assert isinstance(stats, dict) and "multi" in stats
+        assert set(FEATURE_STATE_KEYS) <= set(stats)
 
-    def test_single_regime_multi_is_false(self) -> None:
+    def test_single_regime_dataset_has_one_regime(self) -> None:
         _, stats = add_features(_make_nb_df(), KEEP, "FD001")
-        assert stats["multi"] is False
+        assert stats["n_regimes"] == 1 == N_REGIMES["FD001"]
+        assert all(len(v) == 1 for v in stats["s_mean"].values())
 
     def test_stats_reuse_on_held_out_frame(self) -> None:
         train = _make_nb_df(n_units=4, cycles_per_unit=40, seed=0)
@@ -111,5 +113,24 @@ class TestAddFeatures:
                 rows.append(row)
         df = pd.DataFrame(rows)
         out, stats = add_features(df, KEEP, "FD002")
-        assert stats["multi"] is True
+        assert stats["n_regimes"] == N_REGIMES["FD002"] == 6
         assert not out[FEAT_COLS].isnull().any().any()
+
+    def test_k1_regime_is_global_zscore(self) -> None:
+        """k = 1 through the regime path equals a plain global z-score, bit for bit."""
+        df = _make_nb_df(n_units=4, seed=3)
+        out, _ = add_features(df, KEEP, "FD001")
+        d = df.sort_values(["unit", "cycle"])
+        for s in KEEP:
+            expected = (d[s].to_numpy() - d[s].mean()) / d[s].std()
+            assert np.array_equal(out[f"{s}_n"].to_numpy(), expected), s
+
+    def test_stats_from_older_bundle_raise(self) -> None:
+        legacy_state = {"multi": False, "s_mean": {}, "s_std": {}}
+        with pytest.raises(ValueError, match="predates the params.yaml"):
+            add_features(_make_nb_df(), KEEP, "FD001", stats=legacy_state)
+
+    def test_stats_sensor_mismatch_raises(self) -> None:
+        _, stats = add_features(_make_nb_df(), KEEP, "FD001")
+        with pytest.raises(ValueError, match="fitted on sensors"):
+            add_features(_make_nb_df(), KEEP[:-1], "FD001", stats=stats)

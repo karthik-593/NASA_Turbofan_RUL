@@ -33,7 +33,9 @@ from turbofan.config import (
     DATASETS,
     FEAT_COLS,
     KEEP,
+    MODEL_PARAMS,
     SEED,
+    SEEDS,
     SENSOR_N_COLS,
     SEQ_LEN,
     SPLIT_FRAC,
@@ -67,15 +69,21 @@ class Candidate(NamedTuple):
 
 
 def build_registry(device: str | None = None, seed: int = SEED) -> dict[str, Candidate]:
-    """The five candidates at fixed, untuned configs. Add a model = add a line.
+    """The five candidates at fixed, untuned configs (params.yaml ``models``, D20-D22).
+    Add a model = add a line.
 
     ``seed`` flows into every stochastic model so a registry can be rebuilt per seed.
     """
     dev = device or xgb_device()
     return {
         "mean": Candidate(lambda: MeanBaseline(), "flat"),
-        "ridge": Candidate(lambda: RidgeRUL(alpha=1.0), "flat"),
-        "rf": Candidate(lambda: RandomForestRUL(n_estimators=300, random_state=seed), "flat"),
+        "ridge": Candidate(lambda: RidgeRUL(alpha=MODEL_PARAMS["ridge"]["alpha"]), "flat"),
+        "rf": Candidate(
+            lambda: RandomForestRUL(
+                n_estimators=MODEL_PARAMS["rf"]["n_estimators"], random_state=seed
+            ),
+            "flat",
+        ),
         # library DEFAULTS on purpose — not 02's tuned params; disclosed in notebook 03.
         "xgboost": Candidate(
             lambda: XGBoostRUL(params={"device": dev, "random_state": seed}), "flat"
@@ -219,7 +227,7 @@ def decision_summary(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series[int]]:
 
 def run_comparison_multiseed(
     raw: str | Path,
-    seeds: tuple[int, ...] = (42, 7, 123, 2024, 99),
+    seeds: tuple[int, ...] = SEEDS,
     models: tuple[str, ...] = ("xgboost", "lstm"),
     datasets: tuple[str, ...] = DATASETS,
     verbose: bool = True,

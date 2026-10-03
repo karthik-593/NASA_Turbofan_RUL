@@ -1,0 +1,95 @@
+# Every tunable value the pipeline uses (CLAUDE.md rule 5). `src/turbofan/config.py` reads
+# this file once at import and raises on a missing or malformed key. Status of each value
+# — LOCKED / ASSUMPTION / REVISIT and its evidence — is in docs/decisions.md (D-IDs below).
+# Keys marked "consumed later" are declared for protocol v2 and not read by any code yet.
+
+seed: 42                      # default model seed (D24)
+
+# -- target -----------------------------------------------------------------------------
+rul_cap: 125                  # D01 REVISIT
+rul_cap_grid: [90, 105, 125, 140]   # D01 plan: CV grid; consumed later
+
+# -- data split -------------------------------------------------------------------------
+split_frac: 0.8               # D13: first 80% of engine ids -> train
+
+# -- sensors (D02a/D02b, X04) -----------------------------------------------------------
+# use: the sensors the features are built from (default = the current 14-sensor KEEP).
+# candidate_pool: the non-constant sensors per reports/data_audit.md §E — the pool a later
+# CV feature selection draws from; consumed later.
+sensors:
+  FD001:
+    use: [s2, s3, s4, s7, s8, s9, s11, s12, s13, s14, s15, s17, s20, s21]
+    candidate_pool: [s2, s3, s4, s6, s7, s8, s9, s11, s12, s13, s14, s15, s17, s20, s21]
+  FD002:
+    use: [s2, s3, s4, s7, s8, s9, s11, s12, s13, s14, s15, s17, s20, s21]
+    candidate_pool: [s2, s3, s4, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16, s17, s20, s21]
+  FD003:
+    use: [s2, s3, s4, s7, s8, s9, s11, s12, s13, s14, s15, s17, s20, s21]
+    candidate_pool: [s2, s3, s4, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s17, s20, s21]
+  FD004:
+    use: [s2, s3, s4, s7, s8, s9, s11, s12, s13, s14, s15, s17, s20, s21]
+    candidate_pool: [s2, s3, s4, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16, s17, s20, s21]
+
+# -- operating regimes (D03, D04a, D04b, D05) -------------------------------------------
+# One code path: KMeans with k = n_regimes on standardized op settings, per-regime z-score.
+# k = 1 is the global z-score.
+n_regimes: {FD001: 1, FD002: 6, FD003: 1, FD004: 6}
+regime_kmeans:
+  n_init: 10
+  random_state: 0
+
+# -- features (D07, D08, D10) -----------------------------------------------------------
+window: 20                    # rolling mean/slope window (D08)
+seq_len: 30                   # LSTM sequence length (D10)
+seq_len_grid: [20, 30, 45]    # consumed later
+
+# -- models (D20-D22) -------------------------------------------------------------------
+models:
+  ridge:
+    alpha: 1.0
+  rf:
+    n_estimators: 300
+  xgboost:                    # wrapper defaults; tuned params override them (D21)
+    early_stopping_rounds: 50
+    params:
+      n_estimators: 500
+      max_depth: 6
+      learning_rate: 0.05
+      subsample: 0.8
+      colsample_bytree: 0.8
+      min_child_weight: 3
+      reg_alpha: 0.1
+      reg_lambda: 1.0
+      tree_method: hist
+      eval_metric: rmse
+      n_jobs: -1
+  lstm:
+    hidden: 32
+    layers: 2
+    dropout: 0.3
+    head_hidden: 16
+    lr: 0.001
+    max_epochs: 100
+    patience: 10              # early stopping, epochs without val improvement
+    min_delta: 0.0001         # val-MSE improvement that resets patience
+    batch_size: 256
+    grad_clip_norm: 1.0
+    lr_plateau_patience: 5
+    lr_plateau_factor: 0.5
+
+# -- evaluation (D16, D18, D19, D24) ----------------------------------------------------
+buckets:                      # maintenance buckets, lower bound inclusive (D19)
+  critical: [0, 25]
+  urgent: [25, 50]
+  monitor: [50, 100]
+  healthy: [100, .inf]
+seeds: [42, 7, 123, 2024, 99] # multi-seed robustness (D24)
+
+# -- protocol v2 placeholders (consumed later) ------------------------------------------
+cv:
+  n_folds: 5
+  group_by: unit
+  seed: 0
+bootstrap:
+  n_boot: 2000
+  ci_level: 0.95
