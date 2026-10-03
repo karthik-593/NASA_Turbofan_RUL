@@ -91,3 +91,26 @@ def test_mlflow_parent_and_child_runs(
     assert f"deployment_uncapped_{HEADLINE}_ci_lo" in parents[0].data.metrics
     arts = {a.path for a in client.list_artifacts(pid)}
     assert {"cv_metrics.csv", "decision_curve.csv", "heldout_predictions.csv"} <= arts
+
+
+def test_report_writer_end_to_end(
+    raw: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import torch
+
+    import turbofan.evaluation.report_v2 as rep
+    from turbofan import repro
+
+    monkeypatch.setattr(rep, "REPORT", tmp_path / "reports" / "protocol_v2.md")
+    monkeypatch.setattr(rep, "FIG_DIR", tmp_path / "reports" / "figures" / "protocol_v2")
+    monkeypatch.setattr(rep, "DATASETS", ("FD001",))
+    run = run_cv(
+        "FD001", ["mean", "ridge"], [7], raw, track=False, n_folds=3, n_repeats=1, verbose=False
+    )
+    ctx = repro.environment_context(seeds={"s": 7}, n_threads=torch.get_num_threads())
+    path = rep.write_report(run, raw, ctx, wall=12.0)
+    text = path.read_text(encoding="utf-8")
+    assert "## Sanity run — FD001" in text and "ridge − mean" in text
+    assert "## Compute estimate for the full sweep" in text
+    assert (rep.FIG_DIR / "decision_FD001.png").exists()
+    assert path.with_suffix(".env.json").exists()
