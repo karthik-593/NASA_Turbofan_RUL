@@ -87,6 +87,19 @@ class XGBoostRUL:
         self.model_.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=verbose)
         return self
 
+    def fit_fixed(
+        self, X_train: pd.DataFrame | np.ndarray, y_train: np.ndarray, n_estimators: int
+    ) -> XGBoostRUL:
+        """Fit exactly ``n_estimators`` rounds, no validation set (refit on all training
+        engines, D48)."""
+        if n_estimators < 1:
+            raise ValueError(f"n_estimators must be >= 1, got {n_estimators}")
+        if isinstance(X_train, pd.DataFrame):
+            self.feature_names_ = list(X_train.columns)
+        self.model_ = XGBRegressor(**{**self.params, "n_estimators": n_estimators})
+        self.model_.fit(X_train, y_train, verbose=False)
+        return self
+
     # -- inference -----------------------------------------------------------
 
     def predict(

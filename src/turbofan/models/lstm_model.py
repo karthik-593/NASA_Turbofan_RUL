@@ -145,6 +145,57 @@ class LSTMRUL:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.net: _Net | None = None
         self.best_val_loss_: float | None = None
+        self.best_epoch_: int | None = None  # 1-based epoch of the restored (best) state
+
+    def _setup(self) -> tuple[torch.optim.Optimizer, Any, nn.Module]:
+        torch.manual_seed(self.cfg["seed"])
+        np.random.seed(self.cfg["seed"])
+        self.net = _Net(
+            self.cfg["n_features"], self.cfg["hidden"], self.cfg["layers"], self.cfg["dropout"]
+        ).to(self.device)
+        opt = torch.optim.AdamW(self.net.parameters(), lr=self.cfg["lr"])
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            opt, patience=_P["lr_plateau_patience"], factor=_P["lr_plateau_factor"]
+        )
+        return opt, sched, nn.MSELoss()
+
+    def _loader(self, X: npt.NDArray[np.float32], y: npt.NDArray[np.float32]) -> DataLoader[Any]:
+        return DataLoader(
+            TensorDataset(torch.tensor(X), torch.tensor(y)),
+            batch_size=self.cfg["batch_size"],
+            shuffle=True,
+            # own seeded stream: the shuffle order depends only on the seed, not on how much
+            # of the global torch RNG anything else consumed first
+            generator=torch.Generator().manual_seed(self.cfg["seed"]),
+        )
+
+    def fit_fixed(
+        self, X: npt.NDArray[np.float32], y: npt.NDArray[np.float32], epochs: int
+    ) -> Self:
+        """Train for exactly ``epochs`` epochs with no validation data (refit on all training
+        engines, D48). Same optimizer, clipping and batching as ``fit``; the plateau scheduler,
+        which ``fit`` steps on validation loss, steps on the epoch's mean training loss here."""
+        if epochs < 1:
+            raise ValueError(f"epochs must be >= 1, got {epochs}")
+        opt, sched, lossf = self._setup()
+        assert self.net is not None
+        dl = self._loader(X, y)
+        for _ in range(epochs):
+            self.net.train()
+            total, n = 0.0, 0
+            for xb, yb in dl:
+                xb, yb = xb.to(self.device), yb.to(self.device)
+                opt.zero_grad()
+                loss = lossf(self.net(xb), yb)
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.net.parameters(), _P["grad_clip_norm"])
+                opt.step()
+                total += loss.item() * len(xb)
+                n += len(xb)
+            sched.step(total / n)
+        self.best_val_loss_ = None
+        self.best_epoch_ = epochs
+        return self
 
     def fit(
         self,
@@ -159,30 +210,16 @@ class LSTMRUL:
         be bit-deterministic: GPU kernels and thread scheduling may differ in the last bits
         between runs, which the seed x fold CIs of model comparisons absorb (D43).
         """
-        torch.manual_seed(self.cfg["seed"])
-        np.random.seed(self.cfg["seed"])
-        self.net = _Net(
-            self.cfg["n_features"], self.cfg["hidden"], self.cfg["layers"], self.cfg["dropout"]
-        ).to(self.device)
-        opt = torch.optim.AdamW(self.net.parameters(), lr=self.cfg["lr"])
-        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            opt, patience=_P["lr_plateau_patience"], factor=_P["lr_plateau_factor"]
-        )
-        lossf = nn.MSELoss()
-        dl = DataLoader(
-            TensorDataset(torch.tensor(X_tr), torch.tensor(y_tr)),
-            batch_size=self.cfg["batch_size"],
-            shuffle=True,
-            # own seeded stream: the shuffle order depends only on the seed, not on how much
-            # of the global torch RNG anything else consumed first
-            generator=torch.Generator().manual_seed(self.cfg["seed"]),
-        )
+        opt, sched, lossf = self._setup()
+        assert self.net is not None
+        dl = self._loader(X_tr, y_tr)
         Xva = torch.tensor(X_va).to(self.device)
         yva = torch.tensor(y_va).to(self.device)
         best: float = float("inf")
         best_state: dict[str, torch.Tensor] | None = None
         wait = 0
-        for _ in range(self.cfg["max_epochs"]):
+        best_epoch = 0
+        for epoch in range(1, self.cfg["max_epochs"] + 1):
             self.net.train()
             for xb, yb in dl:
                 xb, yb = xb.to(self.device), yb.to(self.device)
@@ -197,6 +234,7 @@ class LSTMRUL:
             sched.step(vloss)
             if vloss < best - _P["min_delta"]:
                 best = vloss
+                best_epoch = epoch
                 best_state = {k: v.cpu().clone() for k, v in self.net.state_dict().items()}
                 wait = 0
             else:
@@ -206,6 +244,7 @@ class LSTMRUL:
         if best_state is not None:
             self.net.load_state_dict(best_state)
         self.best_val_loss_ = best
+        self.best_epoch_ = best_epoch
         return self
 
     def predict(self, X: npt.NDArray[np.float32], clip: bool = True) -> npt.NDArray[np.float32]:

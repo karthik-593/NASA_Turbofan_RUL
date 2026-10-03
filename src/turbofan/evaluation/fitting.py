@@ -17,7 +17,13 @@ import pandas as pd
 from turbofan.config import FEAT_COLS, SENSOR_N_COLS, SEQ_LEN
 from turbofan.models.lstm_model import make_last_windows, make_sequences
 
-__all__ = ["fit_candidate", "predict_every_cycle", "predict_last_cycle"]
+__all__ = [
+    "fit_candidate",
+    "iteration_budget",
+    "refit_candidate",
+    "predict_every_cycle",
+    "predict_last_cycle",
+]
 
 F64 = npt.NDArray[np.float64]
 
@@ -38,6 +44,41 @@ def fit_candidate(model: Any, kind: str, feat_tr: pd.DataFrame, feat_va: pd.Data
         model.fit(X_tr, y_tr, X_va, y_va)
     else:
         raise ValueError(f"unknown candidate kind {kind!r}")
+    return model
+
+
+def iteration_budget(model: Any) -> int | None:
+    """Rounds / epochs a fitted candidate used (the early-stopped best): boosting rounds for
+    XGBoost, the best epoch for the LSTM, None for models with no iteration count."""
+    if hasattr(model, "best_epoch_"):
+        return None if model.best_epoch_ is None else int(model.best_epoch_)
+    if hasattr(model, "best_iteration_"):
+        return int(model.best_iteration_) + 1  # best_iteration is 0-based
+    return None
+
+
+def refit_candidate(model: Any, kind: str, feat_all: pd.DataFrame, budget: int | None) -> Any:
+    """Fit on every engine in ``feat_all`` with no validation set (D48). Iterative models
+    train for exactly ``budget`` rounds / epochs; the others ignore it and require None."""
+    if not hasattr(model, "fit_fixed"):
+        if budget is not None:
+            raise ValueError(f"{type(model).__name__} has no iteration count; budget must be None")
+    elif budget is None:
+        raise ValueError(
+            f"{type(model).__name__} needs an iteration budget to refit without validation"
+        )
+    X: Any
+    y: Any
+    if kind == "flat":
+        X, y = feat_all[FEAT_COLS], feat_all["rul"].to_numpy()
+    elif kind == "sequence":
+        X, y = make_sequences(feat_all, SENSOR_N_COLS, SEQ_LEN)
+    else:
+        raise ValueError(f"unknown candidate kind {kind!r}")
+    if hasattr(model, "fit_fixed"):
+        model.fit_fixed(X, y, budget)
+    else:
+        model.fit(X, y)
     return model
 
 

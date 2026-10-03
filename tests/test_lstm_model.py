@@ -142,6 +142,38 @@ class TestFitPredict:
         assert model.best_val_loss_ >= 0.0
 
 
+class TestFixedBudget:
+    def test_best_epoch_recorded_within_max_epochs(self) -> None:
+        model = LSTMRUL(
+            n_features=lstm_input_size(len(FEAT_COLS)), hidden=4, layers=1, max_epochs=3, seed=1
+        )
+        X, y = make_sequences(_make_feat_df(seed=0), FEAT_COLS, seq_len=5)
+        model.fit(X, y, X, y)
+        assert model.best_epoch_ is not None and 1 <= model.best_epoch_ <= 3
+
+    def test_fit_fixed_trains_exactly_n_epochs_and_is_seeded(self) -> None:
+        X, y = make_sequences(_make_feat_df(seed=0), FEAT_COLS, seq_len=5)
+        outs = []
+        for _ in range(2):
+            m = LSTMRUL(
+                n_features=lstm_input_size(len(FEAT_COLS)),
+                hidden=4,
+                layers=1,
+                seed=3,
+                device="cpu",
+            )
+            assert m.fit_fixed(X, y, epochs=2) is m
+            assert m.best_epoch_ == 2 and m.best_val_loss_ is None
+            outs.append(m.predict(X))
+        np.testing.assert_array_equal(outs[0], outs[1])
+
+    def test_fit_fixed_rejects_zero_epochs(self) -> None:
+        m = LSTMRUL(n_features=lstm_input_size(len(FEAT_COLS)), hidden=4, layers=1)
+        X, y = make_sequences(_make_feat_df(seed=0), FEAT_COLS, seq_len=5)
+        with pytest.raises(ValueError, match="epochs"):
+            m.fit_fixed(X, y, epochs=0)
+
+
 class TestClipping:
     def test_clip_true_bounds_predictions_to_0_and_cap(self) -> None:
         model, X_tr, _ = _fitted()

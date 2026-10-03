@@ -123,3 +123,17 @@ class TestSaveLoad:
         path = tmp_path / "nested" / "dir" / "model.pkl"
         model.save(path)
         assert path.exists()
+
+
+class TestFitFixed:
+    def test_trains_exactly_n_rounds_without_validation(self) -> None:
+        X, y = _make_xy()
+        model = XGBoostRUL(params={"n_estimators": 500})
+        assert model.fit_fixed(X, y, n_estimators=7) is model
+        assert model.model_ is not None and model.model_.get_booster().num_boosted_rounds() == 7
+        assert len(model.predict(X)) == len(X)
+
+    def test_rejects_non_positive_budget(self) -> None:
+        X, y = _make_xy()
+        with pytest.raises(ValueError, match="n_estimators"):
+            XGBoostRUL().fit_fixed(X, y, n_estimators=0)
