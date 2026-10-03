@@ -153,6 +153,11 @@ def save_bundle(
 ) -> Path:
     """Write a complete bundle; return its directory. ``extra`` adds top-level manifest keys
     (e.g. the locked spec's hash); it may not overwrite a key the bundle sets itself."""
+    if cfg.FEATURE_BLOCKS.active:
+        raise NotImplementedError(
+            f"feature blocks {cfg.FEATURE_BLOCKS} are a model-selection option; serving and "
+            "the request schema handle the base feature set only — extend them before shipping"
+        )
     provenance = git_provenance()
     d = bundle_dir(out_root, dataset, model_name, version)
     d.mkdir(parents=True, exist_ok=True)

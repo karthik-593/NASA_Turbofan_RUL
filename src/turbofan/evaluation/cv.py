@@ -23,7 +23,7 @@ import numpy.typing as npt
 import pandas as pd
 from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 
-from turbofan.config import KEEP, PARAMS
+from turbofan.config import MODEL_SENSORS, PARAMS
 from turbofan.features.engineering import add_features
 
 __all__ = ["Fold", "FoldData", "make_folds", "prepare_fold", "true_rul"]
@@ -100,7 +100,7 @@ def prepare_fold(
     dataset: str,
     fold: Fold,
     rul_cap: float,
-    sensors: list[str] = KEEP,
+    sensors: list[str] = MODEL_SENSORS,
 ) -> FoldData:
     """Features for one fold, all state fitted on the fold's inner-training engines only.
 

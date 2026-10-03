@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 from turbofan import tracking
-from turbofan.config import KEEP, PARAMS
+from turbofan.config import MODEL_SENSORS, PARAMS
 from turbofan.data.integrity import check_test_integrity, load_expectations
 from turbofan.data.loader import load_dataset
 from turbofan.evaluation.comparison import build_registry
@@ -87,7 +87,7 @@ def evaluate(
     ds, seed, cap = spec["dataset"], int(spec["seed"]), float(spec["rul_cap"])
     kind = build_registry(seed=seed)[spec["model"]].kind
     _tr, test, rul_test = load_dataset(ds, raw)  # the sealed read
-    feat_te, _ = add_features(test, KEEP, ds, stats=bundle.stats)
+    feat_te, _ = add_features(test, MODEL_SENSORS, ds, stats=bundle.stats)
     units, pred = predict_last_cycle(bundle.model, kind, feat_te)
     points = pd.DataFrame(
         {"unit": units, "rul_true": rul_test.reindex(units).to_numpy(float), "pred": pred}

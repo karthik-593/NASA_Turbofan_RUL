@@ -21,7 +21,7 @@ from typing import Any
 import mlflow
 
 from turbofan import tracking
-from turbofan.config import KEEP, RUL_CAP
+from turbofan.config import MODEL_SENSORS, RUL_CAP
 from turbofan.data.loader import load_train
 from turbofan.evaluation.comparison import build_registry
 from turbofan.evaluation.cv import true_rul
@@ -68,7 +68,7 @@ def run(ctx: Context) -> Path:
     d = train.copy()
     d["rul_true"] = true_rul(d)
     d["rul"] = d["rul_true"].clip(upper=RUL_CAP)
-    feat_all, stats = add_features(d, KEEP, ds)
+    feat_all, stats = add_features(d, MODEL_SENSORS, ds)
     n_engines, n_rows = int(feat_all["unit"].nunique()), len(feat_all)
 
     h = spec_hash(spec)

@@ -43,6 +43,15 @@ window: 20                    # rolling mean/slope window (D08)
 seq_len: 30                   # LSTM sequence length (D10)
 seq_len_grid: [20, 30, 45]    # consumed later
 
+# -- feature blocks (D51, Stage A3): the defaults are the base feature set ------------------
+features:
+  extra_sensors: []           # sensors added to sensors.use for this run (must be in the
+                              # candidate_pool of pipeline.dataset); 3 features each
+  health_index: none          # none | consistent | pooled: PC1 of within-regime z, fit per fold
+  hi_consistent_share: 0.9    # audit §E rule: a sensor is direction-consistent if >= this share
+                              # of engines share the majority sign of rho(z, time to failure)
+  regime_onehot: false        # one indicator column per fitted regime (multi-regime datasets)
+
 # -- models (D20-D22) -------------------------------------------------------------------
 models:
   ridge:

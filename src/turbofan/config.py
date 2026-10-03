@@ -16,6 +16,7 @@ import math
 import os
 import shutil
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -150,8 +151,65 @@ def sensor_n_cols(sensors: list[str]) -> list[str]:
     return [f"{s}_n" for s in sensors]
 
 
-FEAT_COLS: list[str] = feat_cols(KEEP)
-SENSOR_N_COLS: list[str] = sensor_n_cols(KEEP)
+HEALTH_INDEX_MODES = ("none", "consistent", "pooled")
+HI_COLS = ["hi", "hi_mean", "hi_slope"]
+
+
+@dataclass(frozen=True)
+class FeatureBlocks:
+    """Optional feature blocks on top of the base set (params.yaml ``features``, D51)."""
+
+    extra_sensors: tuple[str, ...] = ()
+    health_index: str = "none"
+    hi_consistent_share: float = 0.9
+    regime_onehot: bool = False
+
+    @property
+    def active(self) -> bool:
+        return bool(self.extra_sensors) or self.health_index != "none" or self.regime_onehot
+
+
+def _feature_blocks() -> FeatureBlocks:
+    extra = _get(PARAMS, "features.extra_sensors", list)
+    hi = _get(PARAMS, "features.health_index", str)
+    share = float(_get(PARAMS, "features.hi_consistent_share", (int, float)))
+    onehot = _get(PARAMS, "features.regime_onehot", bool)
+    if hi not in HEALTH_INDEX_MODES:
+        raise ParamsError(f"params.yaml: features.health_index must be one of {HEALTH_INDEX_MODES}")
+    if not 0.5 < share <= 1.0:
+        raise ParamsError("params.yaml: features.hi_consistent_share must be in (0.5, 1]")
+    blocks = FeatureBlocks(tuple(extra), hi, share, onehot)
+    if blocks.extra_sensors or blocks.regime_onehot:
+        ds = _get(PARAMS, "pipeline.dataset", str)
+        if ds not in DATASETS:
+            raise ParamsError(f"params.yaml: pipeline.dataset {ds!r} not in {DATASETS}")
+        bad = [s for s in extra if s in KEEP or s not in SENSOR_POOL[ds]]
+        if bad or len(set(extra)) != len(extra):
+            raise ParamsError(
+                f"params.yaml: features.extra_sensors {extra} must be distinct sensors of "
+                f"{ds}'s candidate_pool outside sensors.use (offending: {bad})"
+            )
+        if blocks.regime_onehot and N_REGIMES[ds] < 2:
+            raise ParamsError(f"params.yaml: features.regime_onehot needs regimes; {ds} has 1")
+    return blocks
+
+
+def regime_onehot_cols(k: int) -> list[str]:
+    return [f"regime_{r}" for r in range(k)]
+
+
+FEATURE_BLOCKS: FeatureBlocks = _feature_blocks()
+# The sensors a model is built from: sensors.use plus any extra sensors of this run.
+MODEL_SENSORS: list[str] = KEEP + list(FEATURE_BLOCKS.extra_sensors)
+_ONEHOT: list[str] = (
+    regime_onehot_cols(N_REGIMES[_get(PARAMS, "pipeline.dataset", str)])
+    if FEATURE_BLOCKS.regime_onehot
+    else []
+)
+FEAT_COLS: list[str] = (
+    feat_cols(MODEL_SENSORS) + (HI_COLS if FEATURE_BLOCKS.health_index != "none" else []) + _ONEHOT
+)
+SENSOR_N_COLS: list[str] = sensor_n_cols(MODEL_SENSORS) + _ONEHOT
 
 
 def xgb_device() -> str:
