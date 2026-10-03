@@ -127,7 +127,23 @@ def write_smoke_spec(ctx: Any) -> None:
     ctx.spec.write_text(yaml.safe_dump(spec), encoding="utf-8")
 
 
+def _select(argv: list[str]) -> None:
+    ap = argparse.ArgumentParser(prog="python -m turbofan.pipeline select")
+    ap.add_argument("stage", choices=("A",))
+    ap.add_argument(
+        "--dataset", nargs="+", required=True, choices=("FD001", "FD002", "FD003", "FD004")
+    )
+    args = ap.parse_args(argv)
+    from turbofan.pipeline.selection import main as select_main
+
+    select_main(args.stage, args.dataset)
+
+
 def main(argv: list[str] | None = None) -> None:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["select"]:  # the model-selection orchestrator (D51)
+        _select(argv[1:])
+        return
     ap = argparse.ArgumentParser(prog="python -m turbofan.pipeline", description=__doc__)
     ap.add_argument("stage", choices=(*STAGES, *SELECTION_STAGES[1:], "all"))
     ap.add_argument("--smoke", action="store_true", help="tiny isolated run (see module doc)")
