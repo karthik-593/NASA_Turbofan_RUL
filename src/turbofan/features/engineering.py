@@ -33,8 +33,24 @@ __all__ = ["add_features", "assign_regimes", "FEATURE_STATE_KEYS"]
 # Keys a fitted feature state must carry; a state without them predates params.yaml.
 FEATURE_STATE_KEYS = ("n_regimes", "sensors", "op_sc", "km", "s_mean", "s_std")
 
-# Floor on a regime's sensor std so a constant sensor cannot divide by zero (D06).
-_STD_FLOOR = 1e-9
+# A sample std needs two rows; a regime with fewer cannot be normalized (D06, rule 8).
+_MIN_REGIME_ROWS = 2
+
+
+class FeatureError(ValueError):
+    """Input or fitted state that add_features refuses to paper over (rule 8)."""
+
+
+def _check_input(d: pd.DataFrame, sensors: list[str]) -> None:
+    cols = ["unit", "cycle", *OP_COLS, *sensors]
+    missing = [c for c in cols if c not in d.columns]
+    if missing:
+        raise FeatureError(f"input lacks columns {missing}")
+    if d.empty:
+        raise FeatureError("input has no rows")
+    nan = d[cols].isna().sum()
+    if nan.any():
+        raise FeatureError(f"NaN in input columns: {nan[nan > 0].to_dict()}")
 
 
 def _fit_regimes(d: pd.DataFrame, k: int) -> tuple[StandardScaler, KMeans]:
@@ -57,16 +73,29 @@ def _fit_norm(
 
     Computed on each regime's row subset with ``Series.mean/std``: for k = 1 that is
     bit-identical to the former global ``d[s].mean()/std()``, whereas pandas' groupby
-    aggregations differ from them in the last bits.
+    aggregations differ from them in the last bits. A regime with < 2 training rows, or a
+    sensor that is constant within a regime, raises — the former fallbacks (std ``fillna(1)``
+    and a 1e-9 floor) never fired on the train/val split (audit §D, D06) and would only have
+    hidden a bad sensor list or regime count.
     """
     s_mean: dict[str, list[float]] = {s: [] for s in sensors}
     s_std: dict[str, list[float]] = {s: [] for s in sensors}
     for r in range(k):
         rows = d.loc[labels == r]
+        if len(rows) < _MIN_REGIME_ROWS:
+            raise FeatureError(
+                f"regime {r} has {len(rows)} training row(s); need >= {_MIN_REGIME_ROWS} — "
+                "n_regimes is too large for this data"
+            )
         for s in sensors:
-            sd = rows[s].std()
+            sd = float(rows[s].std())
+            if sd == 0.0:
+                raise FeatureError(
+                    f"sensor {s} is constant within regime {r} on the training data — "
+                    "remove it from params.yaml sensors.use"
+                )
             s_mean[s].append(float(rows[s].mean()))
-            s_std[s].append(float(max(1.0 if np.isnan(sd) else sd, _STD_FLOOR)))
+            s_std[s].append(sd)
     return s_mean, s_std
 
 
@@ -81,6 +110,9 @@ def _check_state(stats: dict[str, Any], sensors: list[str]) -> None:
         raise ValueError(
             f"feature state was fitted on sensors {stats['sensors']}, called with {sensors}"
         )
+    k = stats["n_regimes"]
+    if any(len(stats[key][s]) != k for key in ("s_mean", "s_std") for s in sensors):
+        raise FeatureError(f"feature state has per-regime stats inconsistent with k = {k}")
 
 
 def add_features(
@@ -94,6 +126,7 @@ def add_features(
 
     stats=None on train (fits and returns stats); pass the returned stats on val/test.
     """
+    _check_input(d, sensors)
     d = d.sort_values(["unit", "cycle"]).copy()
     if stats is None:
         k = N_REGIMES[dataset_name]
@@ -104,6 +137,9 @@ def add_features(
     else:
         _check_state(stats, sensors)
         labels = assign_regimes(d, stats)
+        unseen = sorted(set(np.unique(labels).tolist()) - set(range(stats["n_regimes"])))
+        if unseen:
+            raise FeatureError(f"regime label(s) {unseen} have no fitted normalization")
     for s in sensors:
         mu = np.asarray(stats["s_mean"][s], dtype=float)[labels]
         sig = np.asarray(stats["s_std"][s], dtype=float)[labels]
@@ -117,4 +153,14 @@ def add_features(
                 lambda w: np.polyfit(np.arange(len(w)), w, 1)[0], raw=True
             )
         )
-    return d.fillna(0), stats
+    # The one legitimate NaN: the slope needs two points, so it is undefined at each engine's
+    # first cycle. Defined explicitly as 0 (no trend observed yet), the value the former
+    # blanket fillna(0) gave it. Any other NaN is a bug and raises.
+    first_cycle = ~d["unit"].duplicated().to_numpy()
+    slope_cols = [f"{s}_slope" for s in sensors]
+    d.loc[first_cycle, slope_cols] = 0.0
+    out_cols = [f"{s}_{kind}" for kind in ("n", "mean", "slope") for s in sensors]
+    nan = d[out_cols].isna().sum()
+    if nan.any():
+        raise FeatureError(f"unexpected NaN in features: {nan[nan > 0].to_dict()}")
+    return d, stats

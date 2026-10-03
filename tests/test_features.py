@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from turbofan.config import FEAT_COLS, KEEP, N_REGIMES
-from turbofan.features.engineering import FEATURE_STATE_KEYS, add_features
+from turbofan.features.engineering import FEATURE_STATE_KEYS, FeatureError, add_features
 
 
 def _make_nb_df(n_units: int = 3, cycles_per_unit: int = 40, seed: int = 0) -> pd.DataFrame:
@@ -134,3 +134,56 @@ class TestAddFeatures:
         _, stats = add_features(_make_nb_df(), KEEP, "FD001")
         with pytest.raises(ValueError, match="fitted on sensors"):
             add_features(_make_nb_df(), KEEP[:-1], "FD001", stats=stats)
+
+
+class TestNoSilentFallbacks:
+    """Rule 8 / D06: every former fillna/floor either raises or is an explicit definition."""
+
+    def test_first_cycle_slope_is_explicit_zero(self) -> None:
+        out, _ = add_features(_make_nb_df(), KEEP, "FD001")
+        first = out.groupby("unit").head(1)
+        assert (first[[f"{s}_slope" for s in KEEP]] == 0.0).all().all()
+        later = out.groupby("unit").nth(1)
+        assert (later[[f"{s}_slope" for s in KEEP]] != 0.0).any().any()
+
+    def test_single_cycle_engine_is_valid(self) -> None:
+        _, stats = add_features(_make_nb_df(), KEEP, "FD001")
+        one = _make_nb_df(n_units=1, cycles_per_unit=1, seed=5)
+        out, _ = add_features(one, KEEP, "FD001", stats=stats)
+        assert not out[FEAT_COLS].isna().any().any()
+
+    def test_nan_sensor_raises(self) -> None:
+        df = _make_nb_df()
+        df.loc[5, "s2"] = np.nan
+        with pytest.raises(FeatureError, match="NaN in input columns.*s2"):
+            add_features(df, KEEP, "FD001")
+
+    def test_nan_op_setting_raises_at_serving(self) -> None:
+        _, stats = add_features(_make_nb_df(), KEEP, "FD001")
+        df = _make_nb_df(n_units=1, seed=2)
+        df.loc[0, "op1"] = np.nan
+        with pytest.raises(FeatureError, match="op1"):
+            add_features(df, KEEP, "FD001", stats=stats)
+
+    def test_missing_column_raises(self) -> None:
+        with pytest.raises(FeatureError, match="lacks columns"):
+            add_features(_make_nb_df().drop(columns=["s7"]), KEEP, "FD001")
+
+    def test_constant_sensor_in_regime_raises(self) -> None:
+        df = _make_nb_df()
+        df["s3"] = 1.0
+        with pytest.raises(FeatureError, match="s3 is constant within regime 0"):
+            add_features(df, KEEP, "FD001")
+
+    def test_regime_with_too_few_rows_raises(self) -> None:
+        df = _make_nb_df(n_units=1, cycles_per_unit=8)
+        df[["op1", "op2", "op3"]] = 0.0
+        df.loc[0, ["op1", "op2", "op3"]] = 100.0  # one outlier row forms its own cluster
+        with pytest.raises(FeatureError, match="regime .* has 1 training row"):
+            add_features(df, KEEP, "FD002")
+
+    def test_inconsistent_state_raises(self) -> None:
+        _, stats = add_features(_make_nb_df(), KEEP, "FD001")
+        stats["s_mean"]["s2"] = [0.0, 0.0]
+        with pytest.raises(FeatureError, match="inconsistent with k = 1"):
+            add_features(_make_nb_df(seed=1), KEEP, "FD001", stats=stats)
