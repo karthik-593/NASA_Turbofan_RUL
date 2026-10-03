@@ -59,12 +59,16 @@ def predict_rul(cycles: Sequence[CycleReading], bundle: Bundle) -> dict[str, Any
     """Predict RUL for one engine from its cycle history using a loaded bundle."""
     dataset = bundle.manifest["dataset"]
     rul = float(bundle.model.predict(serving_window(cycles, bundle))[0])
+    # The model is trained on labels capped at rul_cap and its output is clipped there, so a
+    # prediction at the cap means "at least rul_cap cycles", not that number exactly.
+    rul_at_cap = rul >= bundle.manifest["config"]["rul_cap"]
 
     # No error band until calibrated intervals exist (D26): the old band was the shipped
     # model's test-set RMSE per bucket — calibrated on the test set (rule 3) and looked up by
     # predicted rather than true bucket.
     return {
         "predicted_rul": round(rul, 2),
+        "rul_at_cap": rul_at_cap,
         "maintenance_bucket": maintenance_bucket(rul),
         "confidence": {"error_band_cycles": None, "basis": PENDING_BASIS},
         "n_cycles_used": min(len(cycles), bundle.manifest["config"]["seq_len"]),

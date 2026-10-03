@@ -78,6 +78,9 @@ models:
     lr_plateau_factor: 0.5
 
 # -- evaluation (D16, D18, D19, D24) ----------------------------------------------------
+eval:
+  cap_test_truth: false       # ASSUMPTION (D40): headline metrics vs uncapped test truth;
+                              # scoring always reports both (<metric>_vs_capped/_vs_uncapped)
 buckets:                      # maintenance buckets, lower bound inclusive (D19)
   critical: [0, 25]
   urgent: [25, 50]

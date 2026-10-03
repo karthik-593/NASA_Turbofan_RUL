@@ -165,3 +165,37 @@ class TestEvalLc:
         df = _make_feat_df(n_units=2, cycles_per_unit=5)
         out, _, _ = eval_lc(_ZeroModel(), df)
         assert "critical_rmse" in out
+
+
+class TestCappedAndUncappedTruth:
+    """Training labels are capped, NASA test truth is not: score reports both (D40)."""
+
+    Y = np.array([200.0, 10.0])  # one engine above the cap
+    PRED = np.array([125.0, 10.0])  # a perfect capped-label model
+
+    def test_reports_both_truths(self) -> None:
+        out = score(self.Y, self.PRED, cap_truth=False, rul_cap=125.0)
+        assert out["global_rmse_vs_capped"] == pytest.approx(0.0)
+        assert out["global_rmse_vs_uncapped"] == pytest.approx(np.sqrt(75.0**2 / 2))
+        assert out["healthy_rmse_vs_capped"] == pytest.approx(0.0)
+        assert out["healthy_rmse_vs_uncapped"] == pytest.approx(75.0)
+        assert out["n"] == 2
+
+    def test_headline_follows_cap_truth(self) -> None:
+        unc = score(self.Y, self.PRED, cap_truth=False, rul_cap=125.0)
+        cap = score(self.Y, self.PRED, cap_truth=True, rul_cap=125.0)
+        assert unc["global_rmse"] == unc["global_rmse_vs_uncapped"]
+        assert cap["global_rmse"] == cap["global_rmse_vs_capped"]
+        assert cap["nasa"] == pytest.approx(0.0)
+
+    def test_critical_zone_identical_under_both(self) -> None:
+        """Truth below the cap is untouched, so the headline metric cannot move."""
+        out = score(self.Y, self.PRED + 3.0, rul_cap=125.0)
+        assert out["critical_rmse_vs_capped"] == out["critical_rmse_vs_uncapped"]
+
+    def test_default_is_params_setting(self) -> None:
+        from turbofan.config import CAP_TEST_TRUTH
+
+        out = score(self.Y, self.PRED)
+        key = "global_rmse_vs_capped" if CAP_TEST_TRUTH else "global_rmse_vs_uncapped"
+        assert out["global_rmse"] == out[key]

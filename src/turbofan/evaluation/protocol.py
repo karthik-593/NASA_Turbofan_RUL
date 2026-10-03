@@ -5,6 +5,11 @@ observed cycle vs ground truth — used by the flat models. ``score`` turns any
 (y_true, y_pred) pair into the one metric row used by the comparison, so flat and
 sequence models are scored identically. Headline: critical-zone [0-25] RMSE
 (``critical_rmse``); tiebreaker: NASA score (``nasa``); also global RMSE and late %.
+
+Label consistency: training labels are capped at ``rul_cap`` but NASA's test truth is not.
+``score`` therefore reports every metric against both — ``<metric>_vs_uncapped`` and
+``<metric>_vs_capped`` (truth clipped at ``rul_cap``) — and the unsuffixed headline keys
+use whichever ``params.yaml`` ``eval.cap_test_truth`` selects (default: uncapped).
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from turbofan.config import FEAT_COLS
+from turbofan.config import CAP_TEST_TRUTH, FEAT_COLS, RUL_CAP
 from turbofan.evaluation.metrics import (
     cmapss_score,
     late_prediction_pct,
@@ -61,15 +66,35 @@ def eval_lc(
     return out, y, pred
 
 
-def score(y: Any, pred: Any) -> dict[str, float]:
-    """One metric row for any model, from a (y_true, y_pred) pair."""
-    y = np.asarray(y, dtype=float)
-    pred = np.asarray(pred, dtype=float)
+def _metrics(y: npt.NDArray[np.float64], pred: npt.NDArray[np.float64]) -> dict[str, float]:
     out = {
         "global_rmse": rmse(y, pred),
         "nasa": cmapss_score(y, pred),
         "late_pct": late_prediction_pct(y, pred),
-        "n": len(y),
     }
     out.update(per_bucket_metrics(y, pred))
+    return out
+
+
+def score(
+    y: Any,
+    pred: Any,
+    *,
+    cap_truth: bool = CAP_TEST_TRUTH,
+    rul_cap: float = RUL_CAP,
+) -> dict[str, float]:
+    """One metric row for any model, from a (y_true, y_pred) pair.
+
+    Headline keys (``global_rmse``, ``nasa``, ``late_pct``, ``<bucket>_rmse``) are computed
+    against the truth ``cap_truth`` selects; every one is also reported as
+    ``<key>_vs_uncapped`` and ``<key>_vs_capped``. ``n`` = number of predictions.
+    """
+    y = np.asarray(y, dtype=float)
+    pred = np.asarray(pred, dtype=float)
+    uncapped = _metrics(y, pred)
+    capped = _metrics(np.minimum(y, rul_cap), pred)
+    out: dict[str, float] = dict(capped if cap_truth else uncapped)
+    out["n"] = len(y)
+    out.update({f"{k}_vs_uncapped": v for k, v in uncapped.items()})
+    out.update({f"{k}_vs_capped": v for k, v in capped.items()})
     return out

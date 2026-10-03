@@ -97,6 +97,7 @@ MULTI_REGIME: frozenset[str] = frozenset(ds for ds, k in N_REGIMES.items() if k 
 REGIME_KMEANS_N_INIT: int = _get(PARAMS, "regime_kmeans.n_init", int)
 REGIME_KMEANS_SEED: int = _get(PARAMS, "regime_kmeans.random_state", int)
 
+CAP_TEST_TRUTH: bool = _get(PARAMS, "eval.cap_test_truth", bool)
 MIN_HISTORY: int = _get(PARAMS, "serving.min_history", int)
 if not 1 <= MIN_HISTORY <= SEQ_LEN:
     raise ParamsError(f"params.yaml: serving.min_history must be in 1..seq_len, got {MIN_HISTORY}")

@@ -48,6 +48,11 @@ class PredictResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     predicted_rul: float
+    rul_at_cap: bool = Field(
+        ...,
+        description="true when predicted_rul equals the training label cap: read it as "
+        "'at least this many cycles', not an estimate",
+    )
     maintenance_bucket: str
     confidence: Confidence
     n_cycles_used: int

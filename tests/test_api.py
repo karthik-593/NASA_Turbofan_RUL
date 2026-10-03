@@ -113,6 +113,7 @@ def test_predict_valid_returns_200(client):
     data = r.json()
     for key in (
         "predicted_rul",
+        "rul_at_cap",
         "maintenance_bucket",
         "confidence",
         "n_cycles_used",
@@ -166,3 +167,24 @@ def test_predict_extra_sensor_returns_422(client):
     ]
     r = client.post("/predict", json={"cycles": bad})
     assert r.status_code == 422
+
+
+class _ConstModel:
+    def __init__(self, value: float) -> None:
+        self.value = value
+
+    def predict(self, X):  # type: ignore[no-untyped-def]
+        return np.full(len(X), self.value, dtype=np.float32)
+
+
+@pytest.mark.parametrize(("value", "at_cap"), [(RUL_CAP, True), (RUL_CAP - 0.01, False)])
+def test_rul_at_cap_flag(trained_bundle_dir: str, value: float, at_cap: bool) -> None:
+    from turbofan.serving.schemas import CycleReading
+    from turbofan.serving.service import predict_rul
+    from turbofan.training.bundle import load_bundle
+
+    b = load_bundle(trained_bundle_dir, "FD001", "lstm", "v1", device="cpu")
+    b = b._replace(model=_ConstModel(value))
+    cycles = [CycleReading(**c) for c in _cycles(SEQ_LEN)]
+    out = predict_rul(cycles, b)
+    assert out["rul_at_cap"] is at_cap
