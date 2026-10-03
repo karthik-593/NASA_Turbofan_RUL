@@ -107,5 +107,30 @@ def main(argv: list[str] | None = None) -> None:
         runners[stage]()
 
 
+def _skip_native_teardown_if_it_crashes() -> None:
+    """End the process now, once a stage has succeeded and every output is written, if torch
+    initialized CUDA in it. On this Windows setup any process that trained the LSTM on the GPU
+    dies during native DLL teardown (exit 0xC0000409) after all its work is done — it predates
+    the pipeline (``run_cv --models lstm`` at 6b58534 does it, tracking on or off) — and DVC
+    would count the stage as failed. ``os._exit`` still runs the DLL detach that crashes, so on
+    Windows the process terminates itself directly. Reached only after ``main()`` returned: an
+    exception still propagates with its traceback."""
+    torch = sys.modules.get("torch")
+    if torch is None or not torch.cuda.is_initialized():
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = getattr(ctypes, "windll").kernel32  # noqa: B009 (windll is Windows-only)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        if not kernel32.TerminateProcess(kernel32.GetCurrentProcess(), 0):
+            raise OSError(ctypes.get_last_error(), "TerminateProcess failed")
+    os._exit(0)
+
+
 if __name__ == "__main__":
     main()
+    _skip_native_teardown_if_it_crashes()
