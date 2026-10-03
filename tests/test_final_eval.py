@@ -108,3 +108,37 @@ class TestImportBan:
             [sys.executable, "-c", code], capture_output=True, text=True, check=True
         )
         assert out.stdout.strip() == "False"
+
+
+def test_metrics_out_writes_the_table_as_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+
+    import pandas as pd
+
+    table = pd.DataFrame(
+        {
+            "truth": ["uncapped", "capped"],
+            "metric": ["rmse", "rmse"],
+            "estimate": [10.0, 9.0],
+            "ci_lo": [8.0, 7.0],
+            "ci_hi": [12.0, 11.0],
+            "n_engines": [100, 100],
+            "n_points": [100, 100],
+        }
+    )
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", (tmp_path / "mlruns").as_uri())
+    monkeypatch.setattr(fe, "evaluate", lambda spec, raw: (table, {"n_test_engines": 100}))
+    out = tmp_path / "out" / "m.json"
+    fe.main(["--spec", str(_spec(tmp_path)), "--confirm", "--metrics-out", str(out)])
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert doc["ran"] is True and doc["n_test_engines"] == 100 and doc["model"] == "ridge"
+    assert doc["uncapped"]["rmse"] == {
+        "estimate": 10.0,
+        "ci_lo": 8.0,
+        "ci_hi": 12.0,
+        "n_engines": 100,
+        "n_points": 100,
+    }
+    assert doc["capped"]["rmse"]["estimate"] == 9.0

@@ -17,7 +17,6 @@ Refuses to do anything without ``--confirm``. Selection code must never import t
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -25,51 +24,20 @@ from typing import Any
 import mlflow
 import numpy as np
 import pandas as pd
-import yaml
 from sklearn.model_selection import train_test_split
 
 from turbofan import tracking
 from turbofan.analysis.subpopulation import subpopulation_labels
-from turbofan.config import DATASETS, KEEP, PARAMS, RUL_CAP
+from turbofan.config import KEEP, PARAMS
 from turbofan.data.loader import load_dataset, load_train
 from turbofan.evaluation.comparison import build_registry
 from turbofan.evaluation.cv import true_rul
 from turbofan.evaluation.cv_metrics import metric_table
 from turbofan.evaluation.fitting import fit_candidate, predict_last_cycle
+from turbofan.evaluation.spec import FinalEvalRefused, load_spec, spec_hash
 from turbofan.features.engineering import add_features
 
-__all__ = ["load_spec", "spec_hash", "main"]
-
-REQUIRED = ("dataset", "model", "seed", "rul_cap", "locked")
-
-
-class FinalEvalRefused(RuntimeError):
-    """final_eval declined to read the test set."""
-
-
-def load_spec(path: str | Path) -> dict[str, Any]:
-    spec = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(spec, dict):
-        raise FinalEvalRefused(f"{path}: a spec is a YAML mapping")
-    missing = [k for k in REQUIRED if k not in spec]
-    if missing:
-        raise FinalEvalRefused(f"{path}: spec lacks {missing}")
-    if spec["locked"] is not True:
-        raise FinalEvalRefused(
-            f"{path}: spec is not locked (locked: true) — finish selection first"
-        )
-    if spec["dataset"] not in DATASETS:
-        raise FinalEvalRefused(f"{path}: unknown dataset {spec['dataset']!r}")
-    if float(spec["rul_cap"]) != RUL_CAP:
-        raise FinalEvalRefused(
-            f"{path}: rul_cap {spec['rul_cap']} != params.yaml rul_cap {RUL_CAP}; model "
-            "clipping follows params.yaml, so set rul_cap there before a final evaluation"
-        )
-    return spec
-
-
-def spec_hash(spec: dict[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
+__all__ = ["FinalEvalRefused", "load_spec", "spec_hash", "main"]
 
 
 def _already_evaluated(h: str) -> list[str]:
@@ -114,10 +82,35 @@ def evaluate(spec: dict[str, Any], raw: str | Path) -> tuple[pd.DataFrame, dict[
     return table, {"n_test_engines": len(points)}
 
 
+def _metrics_doc(
+    spec: dict[str, Any], h: str, table: pd.DataFrame, info: dict[str, Any]
+) -> dict[str, Any]:
+    doc: dict[str, Any] = {
+        "ran": True,
+        "dataset": spec["dataset"],
+        "model": spec["model"],
+        "spec_hash": h,
+        **info,
+    }
+    for truth, g in table.groupby("truth"):
+        doc[str(truth)] = {
+            r.metric: {
+                "estimate": r.estimate,
+                "ci_lo": r.ci_lo,
+                "ci_hi": r.ci_hi,
+                "n_engines": r.n_engines,
+                "n_points": r.n_points,
+            }
+            for r in g.itertuples()
+        }
+    return doc
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Score one locked candidate on the NASA test set.")
     ap.add_argument("--spec", required=True, help="locked candidate spec (YAML)")
     ap.add_argument("--raw", default="data/raw")
+    ap.add_argument("--metrics-out", help="also write the metric table here as JSON (DVC metrics)")
     ap.add_argument(
         "--confirm",
         action="store_true",
@@ -155,6 +148,10 @@ def main(argv: list[str] | None = None) -> None:
         )
         mlflow.log_metrics({k: float(v) for k, v in info.items()})
     print(table[table["truth"] == "uncapped"].to_string(index=False))
+    if args.metrics_out:
+        out = Path(args.metrics_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(_metrics_doc(spec, h, table, info), indent=2) + "\n", "utf-8")
 
 
 if __name__ == "__main__":
