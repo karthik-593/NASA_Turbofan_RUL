@@ -45,6 +45,9 @@ __all__ = ["ModelResult", "CVRun", "run_cv", "main"]
 
 _CV = PARAMS["cv"]
 GROUPS = ("all", "subpop_0", "subpop_1")
+# (view, truth, metric) rows that are not reported (D46): the NASA score against uncapped truth
+# in the deployment view is dominated by early-life cycles no capped model can reach
+NOT_REPORTED = frozenset({("deployment", "uncapped", "nasa_mean_per_engine")})
 
 
 @dataclass
@@ -72,9 +75,13 @@ class CVRun:
 
 
 def _split_metrics(pts: pd.DataFrame, rul_cap: float) -> dict[str, float]:
-    agg = engine_aggregates(pts, "uncapped", rul_cap)
-    m = metrics_from_weights(agg, np.ones((1, len(agg))))
-    return {k: float(m[k][0]) for k in (HEADLINE, "rmse", "mae", "nasa_mean_per_engine")}
+    one: dict[str, dict[str, Any]] = {}
+    for truth in ("uncapped", "capped"):
+        agg = engine_aggregates(pts, truth, rul_cap)
+        one[truth] = metrics_from_weights(agg, np.ones((1, len(agg))))
+    out = {k: float(one["uncapped"][k][0]) for k in (HEADLINE, "rmse", "mae")}
+    out["nasa_mean_per_engine_capped"] = float(one["capped"]["nasa_mean_per_engine"][0])
+    return out
 
 
 def _evaluate(
@@ -98,6 +105,8 @@ def _evaluate(
             t = metric_table(sub, rul_cap, np.random.default_rng([seed, len(tables)]))
             tables.append(t.assign(view=view, group=group))
     metrics = pd.concat(tables, ignore_index=True)
+    dropped = pd.MultiIndex.from_frame(metrics[["view", "truth", "metric"]]).isin(NOT_REPORTED)
+    metrics = metrics[~dropped].reset_index(drop=True)
     curve = decision_curve(deploy, np.random.default_rng([seed, 999]))
     return bench, shortfall, metrics, curve
 

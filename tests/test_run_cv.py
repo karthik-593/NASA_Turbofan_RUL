@@ -70,6 +70,11 @@ def test_runner_shape_views_and_no_test_inputs(raw: Path, monkeypatch: pytest.Mo
     assert sum(run.subpop_sizes.values()) == N_UNITS
     assert not res.decision.empty and res.fit_seconds > 0
 
+    nasa = m[m["metric"] == "nasa_mean_per_engine"]
+    assert not ((nasa["view"] == "deployment") & (nasa["truth"] == "uncapped")).any()
+    assert ((nasa["view"] == "deployment") & (nasa["truth"] == "capped")).any()
+    assert ((nasa["view"] == "benchmark") & (nasa["truth"] == "uncapped")).any()
+
 
 def test_mlflow_parent_and_child_runs(
     raw: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -89,6 +94,12 @@ def test_mlflow_parent_and_child_runs(
     assert all(r.data.tags["run_type"] == "cv" for r in runs)
     assert all("device.torch" in r.data.tags for r in runs)
     assert f"deployment_uncapped_{HEADLINE}_ci_lo" in parents[0].data.metrics
+    pm = parents[0].data.metrics
+    assert "deployment_uncapped_nasa_mean_per_engine" not in pm
+    assert "deployment_capped_nasa_mean_per_engine" in pm
+    assert "benchmark_uncapped_nasa_mean_per_engine" in pm
+    assert all("nasa_mean_per_engine" not in c.data.metrics for c in children)
+    assert all("nasa_mean_per_engine_capped" in c.data.metrics for c in children)
     arts = {a.path for a in client.list_artifacts(pid)}
     assert {"cv_metrics.csv", "decision_curve.csv", "heldout_predictions.csv"} <= arts
 

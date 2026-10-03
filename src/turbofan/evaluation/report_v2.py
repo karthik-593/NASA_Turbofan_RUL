@@ -23,7 +23,7 @@ from turbofan.data.loader import load_train
 from turbofan.evaluation.compare import CVResult, paired_compare
 from turbofan.evaluation.cv_metrics import HEADLINE
 from turbofan.evaluation.decision import LEAD_TIMES
-from turbofan.evaluation.run_cv import CVRun, run_cv
+from turbofan.evaluation.run_cv import NOT_REPORTED, CVRun, run_cv
 from turbofan.evaluation.views import deployment_view
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -97,6 +97,9 @@ def _full_table(run: CVRun, view: str, truth: str) -> pd.DataFrame:
     for metric in metrics:
         row = {"metric": metric}
         for name, res in run.results.items():
+            if (view, truth, metric) in NOT_REPORTED:
+                row[name] = "not reported (D46)"
+                continue
             r = _pick(res.metrics, view, "all", truth, metric)
             row[name] = _ci(r, 1) if np.isfinite(r["estimate"]) else "—"
         rows.append(row)
