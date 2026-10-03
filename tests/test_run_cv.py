@@ -127,3 +127,94 @@ def test_report_writer_end_to_end(
     assert (rep.FIG_DIR / "tradeoff_FD001.png").exists()
     assert "Matched operating points" in text and "not like-for-like" in text
     assert path.with_suffix(".env.json").exists()
+
+
+class TestResume:
+    def _children(self, uri: str) -> list[mlflow.entities.Run]:
+        client = mlflow.MlflowClient(uri)
+        exp = client.get_experiment_by_name("turbofan-rul")
+        runs = client.search_runs([exp.experiment_id], max_results=1000)
+        return [r for r in runs if r.data.tags.get("cv_role") == "child"]
+
+    def _run(self, raw: Path, **kw: object) -> object:
+        return run_cv(
+            "FD001", ["mean", "ridge"], [1, 2], raw, n_folds=3, n_repeats=1, verbose=False, **kw
+        )
+
+    def test_second_run_reloads_every_finished_split(
+        self, raw: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        uri = (tmp_path / "mlruns").as_uri()
+        monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
+        first = self._run(raw, track=True)
+        n_children = len(self._children(uri))
+        assert n_children == 2 * 3 * 2  # models x folds x seeds
+        second = self._run(raw, track=True, resume=True)
+        assert len(self._children(uri)) == n_children  # nothing refitted, no new child runs
+        for name in ("mean", "ridge"):
+            assert second.results[name].resumed_splits == 3 * 2
+            a = first.results[name].points.sort_values(["seed", "fold", "unit", "cycle"])
+            b = second.results[name].points.sort_values(["seed", "fold", "unit", "cycle"])
+            pd.testing.assert_frame_equal(
+                a.reset_index(drop=True), b.reset_index(drop=True), check_dtype=False
+            )
+            assert second.results[name].metrics.shape == first.results[name].metrics.shape
+
+    def test_partial_resume_only_fits_the_missing_splits(
+        self, raw: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        uri = (tmp_path / "mlruns").as_uri()
+        monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
+        run_cv(
+            "FD001", ["ridge"], [1], raw, track=True, n_folds=3, n_repeats=1, verbose=False,
+            max_folds=2,
+        )  # fmt: skip
+        full = run_cv(
+            "FD001", ["ridge"], [1], raw, track=True, n_folds=3, n_repeats=1, verbose=False,
+            resume=True,
+        )  # fmt: skip
+        assert full.results["ridge"].resumed_splits == 2
+        assert full.results["ridge"].points["fold"].nunique() == 3
+
+    def test_changed_source_or_config_invalidates(
+        self, raw: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import turbofan.evaluation.resume as resume_mod
+        import turbofan.evaluation.run_cv as run_cv_mod
+
+        uri = (tmp_path / "mlruns").as_uri()
+        monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
+        self._run(raw, track=True)
+        monkeypatch.setattr(run_cv_mod, "src_fingerprint", lambda: "edited-src")
+        assert self._run(raw, track=True, resume=True).results["ridge"].resumed_splits == 0
+        monkeypatch.undo()
+        monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
+        monkeypatch.setitem(resume_mod.PARAMS["cv"], "inner_val_frac", 0.3)
+        assert self._run(raw, track=True, resume=True).results["ridge"].resumed_splits == 0
+
+    def test_resume_needs_tracking(self, raw: Path) -> None:
+        with pytest.raises(ValueError, match="needs MLflow tracking"):
+            run_cv("FD001", ["mean"], [1], raw, track=False, resume=True)
+
+    def test_finished_run_without_artifacts_raises(
+        self, raw: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        uri = (tmp_path / "mlruns").as_uri()
+        monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
+        self._run(raw, track=True)
+        client = mlflow.MlflowClient(uri)
+        victim = self._children(uri)[0]
+        for a in client.list_artifacts(victim.info.run_id):
+            Path(victim.info.artifact_uri.removeprefix("file:///")).joinpath(a.path).unlink()
+        with pytest.raises(RuntimeError, match="lacks"):
+            self._run(raw, track=True, resume=True)
+
+    def test_engine_subset_and_max_folds(self, raw: Path) -> None:
+        run = run_cv(
+            "FD001", ["mean"], [1], raw, track=False, n_folds=2, n_repeats=1, verbose=False,
+            engines=list(range(1, 13)), max_folds=1,
+        )  # fmt: skip
+        pts = run.results["mean"].points
+        assert set(pts["unit"]) <= set(range(1, 13)) and pts["fold"].nunique() == 1
+        with pytest.raises(ValueError, match="not in the FD001"):
+            run_cv("FD001", ["mean"], [1], raw, track=False, engines=[1, 999], verbose=False)

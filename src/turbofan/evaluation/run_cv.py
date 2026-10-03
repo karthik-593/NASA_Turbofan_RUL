@@ -38,7 +38,16 @@ from turbofan.evaluation.cv_metrics import (
     metrics_from_weights,
 )
 from turbofan.evaluation.decision import decision_curve
-from turbofan.evaluation.fitting import fit_candidate, predict_every_cycle
+from turbofan.evaluation.fitting import fit_candidate, iteration_budget, predict_every_cycle
+from turbofan.evaluation.resume import (
+    HASH_TAG,
+    SRC_TAG,
+    config_hash,
+    finished_splits,
+    load_split,
+    log_split,
+    src_fingerprint,
+)
 from turbofan.evaluation.views import benchmark_view, deployment_view, nasa_test_label_histogram
 
 __all__ = ["ModelResult", "CVRun", "run_cv", "main"]
@@ -61,6 +70,8 @@ class ModelResult:
     decision: pd.DataFrame
     fit_seconds: float  # fit + predict wall time summed over fold x seed
     parent_run_id: str | None = None
+    iteration_budgets: list[int] = field(default_factory=list)  # best rounds/epochs per split
+    resumed_splits: int = 0  # splits reloaded from MLflow instead of refitted
 
 
 @dataclass
@@ -121,14 +132,37 @@ def run_cv(
     n_folds: int = _CV["n_folds"],
     n_repeats: int = _CV["n_repeats"],
     verbose: bool = True,
+    resume: bool = False,
+    max_folds: int | None = None,
+    engines: list[int] | None = None,
 ) -> CVRun:
+    """``engines``: restrict to these training engines (subpopulation labels still come from
+    the full training set). ``max_folds``: run only the first splits. ``resume``: reload
+    splits MLflow holds as FINISHED for this exact config and source instead of refitting
+    (needs ``track=True``; see ``evaluation.resume``)."""
+    if resume and not track:
+        raise ValueError("resume=True needs MLflow tracking (track=True): it reloads logged runs")
     train = load_train(dataset, raw)
     labels = subpopulation_labels(train, dataset)
+    if engines is not None:
+        unknown = sorted(set(engines) - set(labels.index))
+        if unknown:
+            raise ValueError(f"engines not in the {dataset} training set: {unknown}")
+        labels = labels.loc[sorted(engines)]
+        train = train[train["unit"].isin(labels.index)]
     folds = make_folds(labels, n_folds=n_folds, n_repeats=n_repeats, seed=_CV["seed"])
+    if max_folds is not None:
+        folds = folds[:max_folds]
     label_share = nasa_test_label_histogram(dataset, raw)
+    fingerprint = src_fingerprint() if track else ""
 
-    t0 = time.perf_counter()
-    fold_data: list[FoldData] = [prepare_fold(train, dataset, f, rul_cap) for f in folds]
+    fold_cache: dict[int, FoldData] = {}
+
+    def fold_data(i: int) -> FoldData:  # built on first use: a fully resumed run needs none
+        if i not in fold_cache:
+            fold_cache[i] = prepare_fold(train, dataset, folds[i], rul_cap)
+        return fold_cache[i]
+
     run = CVRun(
         dataset=dataset,
         n_folds=n_folds,
@@ -141,10 +175,8 @@ def run_cv(
                 strict=True,
             )
         ),
-        feature_seconds=time.perf_counter() - t0,
+        feature_seconds=0.0,
     )
-    if verbose:
-        print(f"{dataset}: {len(folds)} folds prepared in {run.feature_seconds:.0f} s", flush=True)
 
     for name in models:
         common = {
@@ -162,10 +194,32 @@ def run_cv(
             extra_params=common,
             extra_tags={"cv_role": "parent", "protocol": "v2"},
         ) as parent:
-            parts, fit_s = [], 0.0
-            for fd in fold_data:
-                f = fd.fold
+            parts, fit_s, budgets, resumed = [], 0.0, [], 0
+            done = finished_splits(dataset, name, fingerprint) if resume else {}
+            for i, f in enumerate(folds):
                 for s in seeds:
+                    key = config_hash(
+                        dataset=dataset,
+                        model=name,
+                        seed=s,
+                        repeat=f.repeat,
+                        fold=f.fold,
+                        n_folds=n_folds,
+                        n_repeats=n_repeats,
+                        rul_cap=rul_cap,
+                        engines=None if engines is None else list(labels.index),
+                    )
+                    if key in done:
+                        pts, meta = load_split(done[key])
+                        resumed += 1
+                        fit_s += float(meta["fit_seconds"])
+                        if meta["iteration_budget"] is not None:
+                            budgets.append(int(meta["iteration_budget"]))
+                        parts.append(pts)
+                        continue
+                    t_feat = time.perf_counter()
+                    fd = fold_data(i)
+                    run.feature_seconds += time.perf_counter() - t_feat
                     with tracking.run(
                         dataset=dataset,
                         model=name,
@@ -174,7 +228,12 @@ def run_cv(
                         track=track,
                         nested=parent is not None,
                         extra_params={**common, "repeat": f.repeat, "fold": f.fold},
-                        extra_tags={"cv_role": "child", "protocol": "v2"},
+                        extra_tags={
+                            "cv_role": "child",
+                            "protocol": "v2",
+                            HASH_TAG: key,
+                            SRC_TAG: fingerprint,
+                        },
                     ) as child:
                         cand = build_registry(seed=s)[name]
                         t1 = time.perf_counter()
@@ -182,12 +241,18 @@ def run_cv(
                         pts = predict_every_cycle(model, cand.kind, fd.feat_te)
                         dt = time.perf_counter() - t1
                         fit_s += dt
+                        budget = iteration_budget(model)
+                        if budget is not None:
+                            budgets.append(budget)
                         pts = pts.assign(repeat=f.repeat, fold=f.fold, seed=s)
                         pts["subpop"] = labels.loc[pts["unit"]].to_numpy()
                         parts.append(pts)
                         if child is not None:
                             m = _split_metrics(deployment_view(pts), rul_cap)
                             mlflow.log_metrics({**m, "fit_predict_seconds": dt})
+                            if budget is not None:
+                                mlflow.log_metric("iteration_budget", budget)
+                            log_split(pts, {"fit_seconds": dt, "iteration_budget": budget})
                 if verbose:
                     print(f"  {name:8s} repeat {f.repeat} fold {f.fold} done", flush=True)
             points = pd.concat(parts, ignore_index=True)
@@ -202,6 +267,8 @@ def run_cv(
                 decision=curve,
                 fit_seconds=fit_s,
                 parent_run_id=parent.info.run_id if parent is not None else None,
+                iteration_budgets=budgets,
+                resumed_splits=resumed,
             )
             if parent is not None:
                 _log_parent(res)
@@ -231,6 +298,9 @@ def _log_parent(res: ModelResult) -> None:
         flat[f"{base}_ci_lo"] = r.ci_lo
         flat[f"{base}_ci_hi"] = r.ci_hi
     flat["fit_predict_seconds_total"] = res.fit_seconds
+    flat["resumed_splits"] = res.resumed_splits
+    if res.iteration_budgets:
+        flat["iteration_budget_median"] = float(np.median(res.iteration_budgets))
     mlflow.log_metrics({k: float(v) for k, v in flat.items() if np.isfinite(v)})
     mlflow.log_text(m.to_csv(index=False), "cv_metrics.csv")
     mlflow.log_text(res.decision.to_csv(index=False), "decision_curve.csv")
