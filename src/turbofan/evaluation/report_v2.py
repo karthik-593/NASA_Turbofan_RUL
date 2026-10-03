@@ -156,13 +156,13 @@ def _comparisons(run: CVRun) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _decision_fig(run: CVRun) -> tuple[Path, pd.DataFrame]:
+def _decision_fig(run: CVRun, fig_dir: Path) -> tuple[Path, pd.DataFrame]:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    fig_dir.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), dpi=100)
     rows = []
     L = MATCHED_LEAD_TIME
@@ -203,13 +203,13 @@ def _decision_fig(run: CVRun) -> tuple[Path, pd.DataFrame]:
         "Rule: remove when predicted RUL ≤ T — CV held-out trajectories, 95% engine-bootstrap bands"
     )
     fig.tight_layout()
-    path = FIG_DIR / f"decision_{run.dataset}.png"
+    path = fig_dir / f"decision_{run.dataset}.png"
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path, pd.DataFrame(rows)
 
 
-def _tradeoff(run: CVRun) -> tuple[Path, pd.DataFrame, pd.DataFrame]:
+def _tradeoff(run: CVRun, fig_dir: Path) -> tuple[Path, pd.DataFrame, pd.DataFrame]:
     """Trade-off curves (caught share vs mean wasted life, one point per T) and the models
     compared at matched wasted-life budgets: per model, and paired per model pair."""
     import matplotlib
@@ -218,7 +218,7 @@ def _tradeoff(run: CVRun) -> tuple[Path, pd.DataFrame, pd.DataFrame]:
     import matplotlib.pyplot as plt
 
     L = MATCHED_LEAD_TIME
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    fig_dir.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(7, 4.8), dpi=100)
     for name, res in run.results.items():
         c = res.decision
@@ -239,7 +239,7 @@ def _tradeoff(run: CVRun) -> tuple[Path, pd.DataFrame, pd.DataFrame]:
     ax.legend()
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    path = FIG_DIR / f"tradeoff_{run.dataset}.png"
+    path = fig_dir / f"tradeoff_{run.dataset}.png"
     fig.savefig(path, dpi=100)
     plt.close(fig)
 
@@ -388,9 +388,18 @@ files** (`data.loader.load_train`); the only test-side input is the *label histo
 """
 
 
-def write_report(run: CVRun, raw: str | Path, ctx: dict[str, object], wall: float) -> Path:
-    fig, decision_tab = _decision_fig(run)
-    trade_fig, trade_model, trade_paired = _tradeoff(run)
+def write_report(
+    run: CVRun,
+    raw: str | Path,
+    ctx: dict[str, object],
+    wall: float,
+    report: Path | None = None,
+    fig_dir: Path | None = None,
+) -> Path:
+    report = report or REPORT
+    fig_dir = fig_dir or FIG_DIR
+    fig, decision_tab = _decision_fig(run, fig_dir)
+    trade_fig, trade_model, trade_paired = _tradeoff(run, fig_dir)
     est, est_note = _compute_estimate(run, raw)
     short = {k: v for res in run.results.values() for k, v in res.benchmark_shortfall.items()}
     n_fits = run.n_folds * run.n_repeats * len(run.seeds)
@@ -460,7 +469,7 @@ def write_report(run: CVRun, raw: str | Path, ctx: dict[str, object], wall: floa
         "",
         "**Decision curves** (rule: remove when predicted RUL ≤ T):",
         "",
-        f"![decision curves]({fig.relative_to(REPORT.parent).as_posix()})",
+        f"![decision curves]({fig.relative_to(report.parent).as_posix()})",
         "",
         "Same-T table — **not like-for-like**: the same T removes at different wasted life for "
         "different models, so differences here mix better prediction with a different "
@@ -471,7 +480,7 @@ def write_report(run: CVRun, raw: str | Path, ctx: dict[str, object], wall: floa
         f"**Trade-off curves** — caught share (lead ≥ {MATCHED_LEAD_TIME} cycles) against mean "
         "wasted life, one point per T:",
         "",
-        f"![trade-off curves]({trade_fig.relative_to(REPORT.parent).as_posix()})",
+        f"![trade-off curves]({trade_fig.relative_to(report.parent).as_posix()})",
         "",
         "**Matched operating points** — each model read at the T where its mean wasted life "
         "equals the budget (linear interpolation along the T grid; 95% engine-bootstrap CI with "
@@ -498,9 +507,48 @@ def write_report(run: CVRun, raw: str | Path, ctx: dict[str, object], wall: floa
     ]
     # exactly one trailing newline (render_markdown already ends with one; the end-of-file
     # pre-commit hook rejects a trailing blank line)
-    REPORT.write_text("\n".join(parts).rstrip("\n") + "\n", encoding="utf-8")
-    repro.write_context(ctx, REPORT)
-    return REPORT
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("\n".join(parts).rstrip("\n") + "\n", encoding="utf-8")
+    repro.write_context(ctx, report)
+    return report
+
+
+def run_and_report(
+    dataset: str,
+    models: list[str],
+    seeds: list[int],
+    raw: str | Path,
+    *,
+    resume: bool = False,
+    max_folds: int | None = None,
+    engines: list[int] | None = None,
+    n_folds: int | None = None,
+    n_repeats: int | None = None,
+    report: Path | None = None,
+    fig_dir: Path | None = None,
+) -> tuple[CVRun, Path]:
+    """Run protocol-v2 CV (MLflow-tracked) and write the report; returns (run, report path)."""
+    run_seeds = {f"model_seed_{s}": s for s in seeds}
+    run_seeds.update({"cv_seed": PARAMS["cv"]["seed"], "bootstrap_and_views_seed": SEED})
+    # git/data provenance first, before anything is written (cf. D34 / item 0)
+    ctx = repro.environment_context(seeds=run_seeds, n_threads=torch.get_num_threads())
+    t0 = time.perf_counter()
+    run = run_cv(
+        dataset,
+        models,
+        seeds,
+        raw,
+        track=True,
+        resume=resume,
+        max_folds=max_folds,
+        engines=engines,
+        n_folds=PARAMS["cv"]["n_folds"] if n_folds is None else n_folds,
+        n_repeats=PARAMS["cv"]["n_repeats"] if n_repeats is None else n_repeats,
+    )
+    # device state only exists after the models ran (GPU resolved, CUDA initialized)
+    ctx = repro.with_device_state(ctx)
+    path = write_report(run, raw, ctx, time.perf_counter() - t0, report=report, fig_dir=fig_dir)
+    return run, path
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -509,16 +557,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--models", nargs="+", default=["mean", "ridge", "xgboost", "lstm"])
     ap.add_argument("--seeds", nargs="+", type=int, default=[SEED])
     ap.add_argument("--raw", default="data/raw")
+    ap.add_argument("--resume", action="store_true", help="reload splits MLflow already holds")
     args = ap.parse_args(argv)
-    seeds = {f"model_seed_{s}": s for s in args.seeds}
-    seeds.update({"cv_seed": PARAMS["cv"]["seed"], "bootstrap_and_views_seed": SEED})
-    # git/data provenance first, before anything is written (cf. D34 / item 0)
-    ctx = repro.environment_context(seeds=seeds, n_threads=torch.get_num_threads())
-    t0 = time.perf_counter()
-    run = run_cv(args.dataset, args.models, args.seeds, args.raw, track=True)
-    # device state only exists after the models ran (GPU resolved, CUDA initialized)
-    ctx = repro.with_device_state(ctx)
-    path = write_report(run, args.raw, ctx, time.perf_counter() - t0)
+    _run, path = run_and_report(args.dataset, args.models, args.seeds, args.raw, resume=args.resume)
     print(f"wrote {path}")
 
 
