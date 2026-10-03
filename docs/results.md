@@ -84,3 +84,25 @@ of fatter error tails outside the critical zone specifically.
 The shipped bundle (`models/FD001/lstm/`) records its own measured test-set metrics in
 `manifest.json` at training time, so the exact numbers behind any given deployed artifact
 are always traceable to that specific run rather than to this notebook.
+
+## Post-fix reference run (2026-10-03)
+
+After the correctness and `params.yaml` changes (padding + mask channel, seeded shuffle,
+raises instead of silent fallbacks, capped/uncapped scoring, input validation), the FD001
+LSTM was retrained once and logged to MLflow as the reference later changes are compared
+against (`docs/decisions.md` D44): run `b4499ea376d24affa4c34adccb9a5fc9`, bundle
+`models/FD001/lstm/20261003T073558Z`, seed 42.
+
+| FD001 test (n = 100; critical n = 19) | D25b (2026-06 bundle) | Reference run |
+|---|---:|---:|
+| critical-zone RMSE | 3.13 | 3.64 |
+| NASA score | 897 | 742 |
+| global RMSE (uncapped truth) | 17.56 | 16.72 |
+| global RMSE (truth capped at 125) | — | 15.63 |
+| late % | 62.0 | 66.0 |
+
+These are still **test-set numbers** and carry no CI: they identify the artifact, they are
+not selection evidence. The move from 3.13 comes from the changed training inputs (padding
+of every engine's first 29 windows, the mask channel, the seeded shuffle) — FD001 has no test
+engine shorter than the 30-cycle window, so it says nothing about pad + mask on short
+histories — and is within the LSTM's 5-seed spread on FD001 (± 0.70).
