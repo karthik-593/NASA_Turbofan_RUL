@@ -19,7 +19,10 @@ Two concerns live here:
    - ``final_test``             — the one sealed read of the NASA test set per locked
                                    candidate (CLAUDE.md rule 3). Nothing in this repo
                                    produces this tag yet.
-   - ``train_prod``             — ``training/train.py``, which ships a bundle.
+   - ``train_prod``             — ``training/train.py``, which ships a bundle, and the
+                                   pipeline's refit on all training engines.
+   - ``register``               — the pipeline stage that logs a bundle as a pyfunc model
+                                   and registers it (alias ``challenger``).
 
    Tracking is opt-out, not opt-in: ``run()`` raises ``TrackingUnavailable`` unless a
    reachable MLflow backend is configured (``MLFLOW_TRACKING_URI``, default
@@ -73,7 +76,7 @@ __all__ = [
     "register_production_model",
 ]
 
-RunType = Literal["cv", "legacy_test_selection", "final_test", "train_prod"]
+RunType = Literal["cv", "legacy_test_selection", "final_test", "train_prod", "register"]
 
 DEFAULT_TRACKING_URI = "http://localhost:5000"
 DEFAULT_EXPERIMENT_NAME = "turbofan-rul"
