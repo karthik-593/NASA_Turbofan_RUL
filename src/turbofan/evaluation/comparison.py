@@ -7,6 +7,12 @@ adapters (flat features vs LSTM sequences) keep it honest: adding a model is one
 there is no second place the protocol can drift. Fixed, untuned configs — XGBoost uses
 library defaults, NOT notebook 02's tuned params (disclosed in notebook 03).
 
+**Legacy (pre protocol v2):** every function here scores on the NASA test set during
+selection (rule 3 violation, D25) and is kept only so the archived notebook 03's numbers stay
+traceable. Protocol-v2 selection uses ``evaluation.cv`` / ``evaluation.compare``; the former
+``contender_gap`` (±1σ separation, not a significance test — D24) is replaced by
+``evaluation.compare.paired_compare``.
+
 ``run_comparison_multiseed`` re-runs chosen contenders over several model seeds to put
 variance bands on the headline metric. The engine split and the features are
 seed-independent and built once per dataset, so only model init/training varies — the
@@ -62,7 +68,6 @@ __all__ = [
     "decision_summary",
     "run_comparison_multiseed",
     "multiseed_summary",
-    "contender_gap",
 ]
 
 
@@ -306,31 +311,3 @@ def run_comparison_multiseed(
 def multiseed_summary(df_ms: pd.DataFrame, metric: str = "critical_rmse") -> pd.DataFrame:
     """Per dataset×model: mean / std / min / max of ``metric`` across seeds."""
     return df_ms.groupby(["dataset", "model"])[metric].agg(["mean", "std", "min", "max"]).round(2)
-
-
-def contender_gap(
-    df_ms: pd.DataFrame, a: str = "lstm", b: str = "xgboost", metric: str = "critical_rmse"
-) -> pd.DataFrame:
-    """Head-to-head per dataset. gap = mean_b - mean_a (positive => a is better on RMSE).
-
-    ``separated_1sigma`` is True when |gap| exceeds the summed ±1σ bands — a simple,
-    conservative read of whether the difference survives seed variance.
-    """
-    s = df_ms.groupby(["dataset", "model"])[metric].agg(["mean", "std"])
-    rows = []
-    for ds in df_ms["dataset"].unique():
-        ma, sa = s.loc[(ds, a), "mean"], s.loc[(ds, a), "std"]
-        mb, sb = s.loc[(ds, b), "mean"], s.loc[(ds, b), "std"]
-        gap = mb - ma
-        rows.append(
-            {
-                "dataset": ds,
-                f"{a}_mean": round(ma, 2),
-                f"{a}_std": round(sa, 2),
-                f"{b}_mean": round(mb, 2),
-                f"{b}_std": round(sb, 2),
-                "gap_b_minus_a": round(gap, 2),
-                "separated_1sigma": bool(abs(gap) > (sa + sb)),
-            }
-        )
-    return pd.DataFrame(rows).set_index("dataset")
