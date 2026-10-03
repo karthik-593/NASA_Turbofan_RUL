@@ -79,4 +79,4 @@ logs/
 smoke/
 
 # model-selection runs (python -m turbofan.pipeline cv_select --tag ...): reproducible from MLflow
-selection/
+/selection/
