@@ -22,7 +22,7 @@ from turbofan import tracking
 from turbofan.config import KEEP, RUL_CAP, SENSOR_N_COLS, SEQ_LEN
 from turbofan.evaluation.protocol import score
 from turbofan.features.engineering import add_features
-from turbofan.models.lstm_model import LSTMRUL, make_last_windows, make_sequences
+from turbofan.models.lstm_model import LSTMRUL, lstm_input_size, make_last_windows, make_sequences
 from turbofan.training.bundle import load_bundle_dir, save_bundle
 
 
@@ -52,7 +52,7 @@ def _train_tiny_bundle(out_root: Path) -> tuple[Path, pd.DataFrame]:
 
     X, y = make_sequences(feat, SENSOR_N_COLS, SEQ_LEN)
     model = LSTMRUL(
-        n_features=len(SENSOR_N_COLS),
+        n_features=lstm_input_size(len(SENSOR_N_COLS)),
         hidden=4,
         layers=1,
         max_epochs=1,

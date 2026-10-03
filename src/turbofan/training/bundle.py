@@ -31,7 +31,8 @@ import joblib
 from turbofan import config as cfg
 
 # 3: feature state carries a regime model for every dataset (params.yaml n_regimes, D38).
-BUNDLE_SCHEMA = 3
+# 4: LSTM input gains a mask channel; short histories padded with the first real cycle (D11).
+BUNDLE_SCHEMA = 4
 MODEL_FILE = "model.bin"
 FEATURE_STATE_FILE = "feature_state.pkl"
 MANIFEST_FILE = "manifest.json"

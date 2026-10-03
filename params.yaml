@@ -93,3 +93,8 @@ cv:
 bootstrap:
   n_boot: 2000
   ci_level: 0.95
+
+# -- serving ----------------------------------------------------------------------------
+serving:
+  min_history: 10             # ASSUMPTION (D39): fewest cycles /predict accepts; shorter
+                              # histories than seq_len are padded + masked (D11)

@@ -38,25 +38,27 @@ class TestValues:
 
     def test_values_unchanged_from_pre_params_constants(self) -> None:
         """params.yaml moved the constants; it must not have changed any of them."""
+        keep, buckets, seeds = cfg.KEEP, cfg.MAINTENANCE_BUCKETS, cfg.SEEDS
         assert cfg.RUL_CAP == 125.0
         assert (cfg.WINDOW, cfg.SEQ_LEN, cfg.SEED, cfg.SPLIT_FRAC) == (20, 30, 42, 0.8)
         assert (cfg.REGIME_KMEANS_N_INIT, cfg.REGIME_KMEANS_SEED) == (10, 0)
-        assert [
+        assert keep == [
             "s2", "s3", "s4", "s7", "s8", "s9", "s11",
             "s12", "s13", "s14", "s15", "s17", "s20", "s21",
-        ] == cfg.KEEP  # fmt: skip
+        ]  # fmt: skip
         assert len(cfg.FEAT_COLS) == 42 and len(cfg.SENSOR_N_COLS) == 14
-        assert (
+        assert buckets == (
             ("critical", 0.0, 25.0),
             ("urgent", 25.0, 50.0),
             ("monitor", 50.0, 100.0),
             ("healthy", 100.0, float("inf")),
-        ) == cfg.MAINTENANCE_BUCKETS
-        assert cfg.SEEDS == (42, 7, 123, 2024, 99)
+        )
+        assert seeds == (42, 7, 123, 2024, 99)
 
     def test_multi_regime_is_derived_from_n_regimes(self) -> None:
-        assert {"FD001": 1, "FD002": 6, "FD003": 1, "FD004": 6} == cfg.N_REGIMES
-        assert frozenset({"FD002", "FD004"}) == cfg.MULTI_REGIME
+        n_regimes, multi = cfg.N_REGIMES, cfg.MULTI_REGIME
+        assert n_regimes == {"FD001": 1, "FD002": 6, "FD003": 1, "FD004": 6}
+        assert multi == frozenset({"FD002", "FD004"})
 
     def test_candidate_pool_is_audit_E_non_constant_sensors(self) -> None:
         """reports/data_audit.md §E: constant sensors per dataset are excluded."""

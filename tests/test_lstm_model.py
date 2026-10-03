@@ -11,6 +11,7 @@ import pytest
 from turbofan.models.lstm_model import (
     LSTMRUL,
     RUL_CAP,
+    lstm_input_size,
     make_last_windows,
     make_sequences,
 )
@@ -40,7 +41,7 @@ def _fitted(seq_len: int = 5) -> tuple[LSTMRUL, np.ndarray, np.ndarray]:
     X_tr, y_tr = make_sequences(df_tr, FEAT_COLS, seq_len=seq_len)
     X_va, y_va = make_sequences(df_va, FEAT_COLS, seq_len=seq_len)
     model = LSTMRUL(
-        n_features=len(FEAT_COLS),
+        n_features=lstm_input_size(len(FEAT_COLS)),
         hidden=4,
         layers=1,
         max_epochs=2,
@@ -55,7 +56,7 @@ class TestMakeSequences:
     def test_output_shapes(self) -> None:
         df = _make_feat_df(n_units=2, cycles_per_unit=6)
         X, y = make_sequences(df, FEAT_COLS, seq_len=4)
-        assert X.shape == (12, 4, len(FEAT_COLS))
+        assert X.shape == (12, 4, len(FEAT_COLS) + 1)
         assert y.shape == (12,)
 
     def test_dtype_is_float32(self) -> None:
@@ -64,12 +65,21 @@ class TestMakeSequences:
         assert X.dtype == np.float32
         assert y.dtype == np.float32
 
-    def test_short_history_is_left_padded_with_zeros(self) -> None:
-        """First window of an engine, before seq_len cycles exist, must be zero-padded."""
+    def test_short_history_padded_with_first_cycle_and_masked(self) -> None:
+        """Before seq_len cycles exist, a window repeats the first real cycle and the mask
+        channel marks only real cycles (D11)."""
         df = _make_feat_df(n_units=1, cycles_per_unit=5)
         X, _ = make_sequences(df, FEAT_COLS, seq_len=5)
-        first_window = X[0]
-        np.testing.assert_array_equal(first_window[:4], np.zeros((4, len(FEAT_COLS))))
+        vals = df.sort_values("cycle")[FEAT_COLS].to_numpy(dtype=np.float32)
+        second = X[1]  # 2 real cycles, 3 padded
+        np.testing.assert_array_equal(second[:3, :-1], np.repeat(vals[:1], 3, axis=0))
+        np.testing.assert_array_equal(second[3:, :-1], vals[:2])
+        np.testing.assert_array_equal(second[:, -1], [0, 0, 0, 1, 1])
+
+    def test_full_window_mask_is_all_ones(self) -> None:
+        df = _make_feat_df(n_units=1, cycles_per_unit=6)
+        X, _ = make_sequences(df, FEAT_COLS, seq_len=3)
+        assert (X[2:, :, -1] == 1.0).all()
 
     def test_target_is_rul_at_window_end(self) -> None:
         df = _make_feat_df(n_units=1, cycles_per_unit=6)
@@ -82,24 +92,36 @@ class TestMakeLastWindows:
     def test_one_window_per_engine(self) -> None:
         df = _make_feat_df(n_units=4, cycles_per_unit=6)
         X, units = make_last_windows(df, FEAT_COLS, seq_len=3)
-        assert X.shape == (4, 3, len(FEAT_COLS))
+        assert X.shape == (4, 3, len(FEAT_COLS) + 1)
         assert list(units) == [1, 2, 3, 4]
 
     def test_window_ends_at_last_cycle(self) -> None:
         df = _make_feat_df(n_units=1, cycles_per_unit=6)
         X, _ = make_last_windows(df, FEAT_COLS, seq_len=3)
         expected = df.sort_values("cycle")[FEAT_COLS].to_numpy(dtype=np.float32)[-3:]
-        np.testing.assert_array_equal(X[0], expected)
+        np.testing.assert_array_equal(X[0][:, :-1], expected)
+        np.testing.assert_array_equal(X[0][:, -1], np.ones(3))
 
-    def test_short_history_is_left_padded(self) -> None:
+    def test_short_history_is_padded_and_masked(self) -> None:
         df = _make_feat_df(n_units=1, cycles_per_unit=2)
         X, _ = make_last_windows(df, FEAT_COLS, seq_len=5)
-        np.testing.assert_array_equal(X[0][:3], np.zeros((3, len(FEAT_COLS))))
+        vals = df.sort_values("cycle")[FEAT_COLS].to_numpy(dtype=np.float32)
+        np.testing.assert_array_equal(X[0][:3, :-1], np.repeat(vals[:1], 3, axis=0))
+        np.testing.assert_array_equal(X[0][:, -1], [0, 0, 0, 1, 1])
+
+    def test_last_window_equals_training_window_at_same_cycle(self) -> None:
+        """make_last_windows and make_sequences build the identical window for a cycle."""
+        df = _make_feat_df(n_units=1, cycles_per_unit=4)
+        X_seq, _ = make_sequences(df, FEAT_COLS, seq_len=6)
+        X_last, _ = make_last_windows(df, FEAT_COLS, seq_len=6)
+        np.testing.assert_array_equal(X_seq[-1], X_last[0])
 
 
 class TestFitPredict:
     def test_fit_returns_self(self) -> None:
-        model = LSTMRUL(n_features=len(FEAT_COLS), hidden=4, layers=1, max_epochs=1)
+        model = LSTMRUL(
+            n_features=lstm_input_size(len(FEAT_COLS)), hidden=4, layers=1, max_epochs=1
+        )
         X_tr, y_tr = make_sequences(_make_feat_df(seed=0), FEAT_COLS, seq_len=5)
         assert model.fit(X_tr, y_tr, X_tr, y_tr) is model
 
@@ -108,7 +130,7 @@ class TestFitPredict:
         assert model.predict(X_tr).shape == (len(X_tr),)
 
     def test_predict_before_fit_raises(self) -> None:
-        model = LSTMRUL(n_features=len(FEAT_COLS))
+        model = LSTMRUL(n_features=lstm_input_size(len(FEAT_COLS)))
         X, _ = make_sequences(_make_feat_df(), FEAT_COLS, seq_len=5)
         with pytest.raises(RuntimeError):
             model.predict(X)
@@ -129,7 +151,7 @@ class TestClipping:
 
 class TestSaveLoad:
     def test_save_before_fit_raises(self, tmp_path: Path) -> None:
-        model = LSTMRUL(n_features=len(FEAT_COLS))
+        model = LSTMRUL(n_features=lstm_input_size(len(FEAT_COLS)))
         with pytest.raises(RuntimeError):
             model.save(tmp_path / "model.pt")
 

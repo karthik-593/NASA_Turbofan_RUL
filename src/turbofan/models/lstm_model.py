@@ -1,6 +1,7 @@
 """LSTM model for C-MAPSS RUL prediction.
 
-A sequence model over the normalized sensor channels — NOT the engineered flat features.
+A sequence model over the normalized sensor channels — NOT the engineered flat features —
+plus a mask channel marking real cycles vs padding (D11).
 The LSTM learns its own temporal representation, so it gets the raw normalized sensors over
 a sliding window. Deliberately small: the earlier large LSTM overfit (~0.1 samples per
 parameter); this one uses ~14 channels, a 30-cycle window, and a modest hidden size.
@@ -22,7 +23,37 @@ from turbofan.config import MODEL_PARAMS, RUL_CAP, SEED, SEQ_LEN
 
 _P: dict[str, Any] = MODEL_PARAMS["lstm"]  # params.yaml models.lstm (D22)
 
-__all__ = ["LSTMRUL", "make_sequences", "make_last_windows", "SEQ_LEN", "RUL_CAP"]
+__all__ = [
+    "LSTMRUL",
+    "lstm_input_size",
+    "make_sequences",
+    "make_last_windows",
+    "SEQ_LEN",
+    "RUL_CAP",
+]
+
+
+def lstm_input_size(n_cols: int) -> int:
+    """LSTM input width for ``n_cols`` feature channels: the channels plus the mask (D11)."""
+    return n_cols + 1
+
+
+def _window(vals: npt.NDArray[np.float32], seq_len: int) -> npt.NDArray[np.float32]:
+    """One ``(seq_len, n_cols + 1)`` window from the last <= seq_len real cycles ``vals``.
+
+    Histories shorter than ``seq_len`` are left-padded by repeating the first real cycle's
+    (normalized) values — a plausible, in-distribution input rather than zeros, which are a
+    real z-score — and a last channel marks real cycles 1 and padding 0, so the model can
+    tell them apart (D11). The single builder behind training windows, test windows and
+    serving, so all three pad identically.
+    """
+    n = len(vals)
+    if not 1 <= n <= seq_len:
+        raise ValueError(f"window needs 1..{seq_len} real cycles, got {n}")
+    pad = np.repeat(vals[:1], seq_len - n, axis=0)
+    mask = np.zeros((seq_len, 1), dtype=np.float32)
+    mask[seq_len - n :] = 1.0
+    return np.hstack([np.vstack([pad, vals]), mask]).astype(np.float32)
 
 
 def make_sequences(
@@ -31,17 +62,13 @@ def make_sequences(
     seq_len: int = SEQ_LEN,
 ) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
     """Sliding windows per engine; target = RUL at the window's last cycle.
-    Left-pads short histories with zeros so every window is seq_len long."""
+    Short histories are padded and masked by ``_window``."""
     X, y = [], []
     for _, g in feat_df.sort_values(["unit", "cycle"]).groupby("unit"):
         vals = g[feat_cols].to_numpy().astype(np.float32)
         ruls = g["rul"].to_numpy().astype(np.float32)
         for i in range(len(g)):
-            win = vals[max(0, i - seq_len + 1) : i + 1]
-            if len(win) < seq_len:
-                pad = np.zeros((seq_len - len(win), len(feat_cols)), dtype=np.float32)
-                win = np.vstack([pad, win])
-            X.append(win)
+            X.append(_window(vals[max(0, i - seq_len + 1) : i + 1], seq_len))
             y.append(ruls[i])
     return np.stack(X), np.array(y, dtype=np.float32)
 
@@ -51,15 +78,12 @@ def make_last_windows(
     feat_cols: list[str],
     seq_len: int = SEQ_LEN,
 ) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.int64]]:
-    """One window per engine ending at its last observed cycle — for test prediction."""
+    """One window per engine ending at its last observed cycle — for test prediction and
+    serving. Short histories are padded and masked by ``_window``."""
     X, units = [], []
     for unit, g in feat_df.sort_values(["unit", "cycle"]).groupby("unit"):
         vals = g[feat_cols].to_numpy().astype(np.float32)
-        win = vals[-seq_len:]
-        if len(win) < seq_len:
-            pad = np.zeros((seq_len - len(win), len(feat_cols)), dtype=np.float32)
-            win = np.vstack([pad, win])
-        X.append(win)
+        X.append(_window(vals[-seq_len:], seq_len))
         units.append(unit)
     return np.stack(X), np.array(units, dtype=np.int64)
 

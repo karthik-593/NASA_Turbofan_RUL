@@ -3,8 +3,11 @@ directly (and so the serving-vs-training parity test can call it).
 
 This MUST run the exact same pipeline as training: build the engineered features with
 ``add_features`` using the bundle's persisted train-time ``stats``, take the last
-``SEQ_LEN`` window of the normalized channels, and predict. The parity test guards that
-this path reproduces the training path bit-for-bit.
+``seq_len`` window of the normalized channels — padded and masked by the same builder as
+training when the history is shorter (D11) — and predict. Window length, sensors and
+rolling window come from the bundle's manifest (what the model was trained with), not from
+the current params.yaml. The parity test guards that this path reproduces the training
+path bit-for-bit.
 """
 
 from __future__ import annotations
@@ -12,9 +15,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
-from turbofan.config import KEEP, SENSOR_N_COLS, SEQ_LEN, maintenance_bucket
+from turbofan.config import MIN_HISTORY, maintenance_bucket, sensor_n_cols
 from turbofan.features.engineering import add_features
 from turbofan.models.lstm_model import make_last_windows
 from turbofan.serving.schemas import CycleReading
@@ -24,7 +29,7 @@ PENDING_BASIS = "pending calibrated intervals"
 
 
 class ShortHistory(ValueError):
-    """Raised when fewer than SEQ_LEN cycles are supplied."""
+    """Raised when fewer than ``serving.min_history`` cycles are supplied."""
 
 
 def to_frame(cycles: Sequence[CycleReading], unit: int = 1) -> pd.DataFrame:
@@ -37,15 +42,23 @@ def to_frame(cycles: Sequence[CycleReading], unit: int = 1) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def serving_window(cycles: Sequence[CycleReading], bundle: Bundle) -> npt.NDArray[np.float32]:
+    """The model input for one request: ``(1, seq_len, n_channels + 1)``."""
+    if len(cycles) < MIN_HISTORY:
+        raise ShortHistory(f"need at least {MIN_HISTORY} cycles of history, got {len(cycles)}")
+    cfg = bundle.manifest["config"]
+    sensors = list(cfg["keep"])
+    feat, _ = add_features(
+        to_frame(cycles), sensors, bundle.manifest["dataset"], cfg["window"], stats=bundle.stats
+    )
+    X_w, _units = make_last_windows(feat, sensor_n_cols(sensors), cfg["seq_len"])
+    return X_w
+
+
 def predict_rul(cycles: Sequence[CycleReading], bundle: Bundle) -> dict[str, Any]:
     """Predict RUL for one engine from its cycle history using a loaded bundle."""
-    if len(cycles) < SEQ_LEN:
-        raise ShortHistory(f"need at least {SEQ_LEN} cycles of history, got {len(cycles)}")
-
     dataset = bundle.manifest["dataset"]
-    feat, _ = add_features(to_frame(cycles), KEEP, dataset, stats=bundle.stats)
-    X_w, _units = make_last_windows(feat, SENSOR_N_COLS, SEQ_LEN)
-    rul = float(bundle.model.predict(X_w)[0])
+    rul = float(bundle.model.predict(serving_window(cycles, bundle))[0])
 
     # No error band until calibrated intervals exist (D26): the old band was the shipped
     # model's test-set RMSE per bucket — calibrated on the test set (rule 3) and looked up by
@@ -54,7 +67,7 @@ def predict_rul(cycles: Sequence[CycleReading], bundle: Bundle) -> dict[str, Any
         "predicted_rul": round(rul, 2),
         "maintenance_bucket": maintenance_bucket(rul),
         "confidence": {"error_band_cycles": None, "basis": PENDING_BASIS},
-        "n_cycles_used": SEQ_LEN,
+        "n_cycles_used": min(len(cycles), bundle.manifest["config"]["seq_len"]),
         "dataset": dataset,
         "model_version": bundle.manifest["version"],
     }

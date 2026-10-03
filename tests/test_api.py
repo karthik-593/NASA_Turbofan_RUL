@@ -18,10 +18,10 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from turbofan.config import KEEP, RUL_CAP, SENSOR_N_COLS, SEQ_LEN
+from turbofan.config import KEEP, MIN_HISTORY, RUL_CAP, SENSOR_N_COLS, SEQ_LEN
 from turbofan.evaluation.protocol import score
 from turbofan.features.engineering import add_features
-from turbofan.models.lstm_model import LSTMRUL, make_last_windows, make_sequences
+from turbofan.models.lstm_model import LSTMRUL, lstm_input_size, make_last_windows, make_sequences
 from turbofan.serving.app import app
 from turbofan.training.bundle import save_bundle
 
@@ -62,7 +62,7 @@ def trained_bundle_dir(tmp_path_factory: pytest.TempPathFactory) -> str:
 
     X, y = make_sequences(feat, SENSOR_N_COLS, SEQ_LEN)
     model = LSTMRUL(
-        n_features=len(SENSOR_N_COLS),
+        n_features=lstm_input_size(len(SENSOR_N_COLS)),
         hidden=4,
         layers=1,
         max_epochs=2,
@@ -132,9 +132,22 @@ def test_predict_confidence_band_is_pending(client):
     assert conf["basis"] == "pending calibrated intervals"
 
 
-def test_predict_short_history_returns_400(client):
-    r = client.post("/predict", json={"cycles": _cycles(SEQ_LEN - 1)})
+def test_predict_below_min_history_returns_400(client):
+    r = client.post("/predict", json={"cycles": _cycles(MIN_HISTORY - 1)})
     assert r.status_code == 400
+
+
+def test_predict_short_history_is_padded_not_rejected(client):
+    """Between min_history and seq_len the window is padded + masked (D11)."""
+    assert MIN_HISTORY < SEQ_LEN
+    r = client.post("/predict", json={"cycles": _cycles(MIN_HISTORY)})
+    assert r.status_code == 200
+    assert r.json()["n_cycles_used"] == MIN_HISTORY
+
+
+def test_predict_long_history_uses_seq_len_cycles(client):
+    r = client.post("/predict", json={"cycles": _cycles(SEQ_LEN + 5)})
+    assert r.json()["n_cycles_used"] == SEQ_LEN
 
 
 def test_predict_missing_sensor_returns_422(client):

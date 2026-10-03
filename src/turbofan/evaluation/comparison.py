@@ -45,7 +45,12 @@ from turbofan.data.loader import load_dataset
 from turbofan.evaluation.protocol import predict_last_cycle, score
 from turbofan.features.engineering import add_features
 from turbofan.models.baselines import MeanBaseline, RandomForestRUL, RidgeRUL
-from turbofan.models.lstm_model import LSTMRUL, make_last_windows, make_sequences
+from turbofan.models.lstm_model import (
+    LSTMRUL,
+    lstm_input_size,
+    make_last_windows,
+    make_sequences,
+)
 from turbofan.models.xgboost_model import XGBoostRUL
 
 __all__ = [
@@ -62,7 +67,7 @@ __all__ = [
 
 
 class Candidate(NamedTuple):
-    """kind: 'flat' (42 engineered features) | 'sequence' (14 normalized channels, windowed)"""
+    """kind: 'flat' (42 engineered features) | 'sequence' (14 normalized channels + mask)"""
 
     factory: Callable[[], Any]
     kind: str
@@ -88,7 +93,9 @@ def build_registry(device: str | None = None, seed: int = SEED) -> dict[str, Can
         "xgboost": Candidate(
             lambda: XGBoostRUL(params={"device": dev, "random_state": seed}), "flat"
         ),
-        "lstm": Candidate(lambda: LSTMRUL(n_features=len(SENSOR_N_COLS), seed=seed), "sequence"),
+        "lstm": Candidate(
+            lambda: LSTMRUL(n_features=lstm_input_size(len(SENSOR_N_COLS)), seed=seed), "sequence"
+        ),
     }
 
 

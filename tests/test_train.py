@@ -7,7 +7,7 @@ import pandas as pd
 
 from turbofan.config import FEAT_COLS, SENSOR_N_COLS
 from turbofan.models.baselines import RidgeRUL
-from turbofan.models.lstm_model import LSTMRUL
+from turbofan.models.lstm_model import LSTMRUL, lstm_input_size
 from turbofan.training.train import _fit_and_eval
 
 
@@ -55,7 +55,9 @@ class TestSequenceKind:
         feat_va = _make_df(SENSOR_N_COLS, n_units=2, cycles_per_unit=8, seed=1)
         feat_te = _make_df(SENSOR_N_COLS, n_units=3, cycles_per_unit=8, seed=2)
         rul_te = pd.Series([4.0, 4.0, 4.0], index=[1, 2, 3])
-        model = LSTMRUL(n_features=len(SENSOR_N_COLS), hidden=4, layers=1, max_epochs=2)
+        model = LSTMRUL(
+            n_features=lstm_input_size(len(SENSOR_N_COLS)), hidden=4, layers=1, max_epochs=2
+        )
 
         fitted, y, pred = _fit_and_eval(model, "sequence", feat_tr, feat_va, feat_te, rul_te)
 
