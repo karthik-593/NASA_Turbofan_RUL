@@ -11,6 +11,9 @@ a ``refit`` record, and no test-set metric). The bundle's model and feature stat
 observed cycle, metrics with engine-bootstrap CIs. Logged to MLflow with ``run_type=final_test``
 and the spec's hash; a second run for the same spec hash is refused.
 
+Before scoring it checks the test files' structure only (schema, row / unit counts against
+``configs/data_expectations.json``, ``data.integrity``) and refuses on any deviation.
+
 Refuses to do anything without ``--confirm``. Selection code must never import this module
 (``tests/test_final_eval.py`` enforces it): nothing in model selection may reach the test set.
 """
@@ -27,7 +30,8 @@ import numpy as np
 import pandas as pd
 
 from turbofan import tracking
-from turbofan.config import KEEP
+from turbofan.config import KEEP, PARAMS
+from turbofan.data.integrity import check_test_integrity, load_expectations
 from turbofan.data.loader import load_dataset
 from turbofan.evaluation.comparison import build_registry
 from turbofan.evaluation.cv_metrics import metric_table
@@ -121,6 +125,11 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--spec", required=True, help="locked candidate spec (YAML)")
     ap.add_argument("--bundle", required=True, help="the train_prod bundle directory to score")
     ap.add_argument("--raw", default="data/raw")
+    ap.add_argument(
+        "--expectations",
+        default=str(Path(__file__).resolve().parents[3] / PARAMS["final_eval"]["expectations"]),
+        help="recorded test-file row / unit counts (default: params final_eval.expectations)",
+    )
     ap.add_argument("--metrics-out", help="also write the metric table here as JSON (DVC metrics)")
     ap.add_argument(
         "--confirm",
@@ -139,6 +148,10 @@ def main(argv: list[str] | None = None) -> None:
     if previous:
         raise FinalEvalRefused(f"spec {h[:12]} was already scored on the test set: runs {previous}")
     manifest = check_bundle(spec, args.bundle)
+    # structure only (rule 3): schema and counts of the test files, before anything is scored
+    integrity = check_test_integrity(
+        spec["dataset"], args.raw, load_expectations(args.expectations)
+    )
     bundle = load_bundle_dir(args.bundle)
 
     with tracking.run(
@@ -152,6 +165,7 @@ def main(argv: list[str] | None = None) -> None:
         table, info = evaluate(spec, args.raw, bundle)
         assert active is not None
         mlflow.log_dict(spec, "locked_spec.yaml")
+        mlflow.log_dict(integrity, "test_integrity.json")
         mlflow.log_text(table.to_csv(index=False), "final_test_metrics.csv")
         mlflow.log_metrics(
             {

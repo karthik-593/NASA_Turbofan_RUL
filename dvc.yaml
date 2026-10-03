@@ -104,12 +104,13 @@ stages:
     cmd: python -m turbofan.pipeline final_eval
     deps:
       - ${release.spec}
+      - configs/data_expectations.json
       - data/raw
       - models/prod
       - reports/train_prod/metrics.json
       - src/turbofan
     params:
-      - final_eval.enabled
+      - final_eval
       - rul_cap
       - sensors
       - n_regimes

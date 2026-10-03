@@ -286,6 +286,24 @@ def _write_test_files(raw: Path, n_test: int = 10) -> None:
     pd.Series(remaining).to_csv(raw / "RUL_FD001.txt", header=False, index=False)
 
 
+def _expectations(tmp_path: Path, raw: Path, n_test: int = 10) -> Path:
+    test = pd.read_csv(raw / "test_FD001.txt", sep=" ", header=None)
+    doc = {
+        "datasets": {
+            "FD001": {
+                "test_rows": len(test),
+                "test_cols": test.shape[1],
+                "test_units": n_test,
+                "rul_rows": n_test,
+                "rul_cols": 1,
+            }
+        }
+    }
+    p = tmp_path / "expectations.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    return p
+
+
 def test_final_eval_scores_the_train_prod_bundle_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -308,6 +326,7 @@ def test_final_eval_scores_the_train_prod_bundle_once(
     argv = [
         "--spec", str(ctx.spec), "--bundle", str(bundle), "--raw", str(ctx.raw),
         "--confirm", "--metrics-out", str(out),
+        "--expectations", str(_expectations(tmp_path, ctx.raw)),
     ]  # fmt: skip
     fe.main(argv)
     doc = json.loads(out.read_text(encoding="utf-8"))

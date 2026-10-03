@@ -163,3 +163,34 @@ class TestBundleChecks:
         bad = _manifest(tmp_path, spec_hash="0" * 64)
         with pytest.raises(fe.FinalEvalRefused, match="not built from this spec"):
             fe.main(["--spec", str(_spec(tmp_path)), "--bundle", str(bad), "--confirm"])
+
+
+class TestIntegrityGate:
+    def test_only_final_eval_imports_the_integrity_check(self) -> None:
+        offenders = [
+            str(f.relative_to(SRC))
+            for f in SRC.rglob("*.py")
+            if f.name not in ("final_eval.py", "integrity.py")
+            and "turbofan.data.integrity" in _imports(f)
+        ]
+        assert offenders == []
+
+    def test_a_failed_integrity_check_stops_everything_before_scoring(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from turbofan.data.integrity import DataIntegrityError
+
+        def fail(*_a: object, **_k: object) -> None:
+            raise DataIntegrityError("test_rows: 1 != expected 2")
+
+        def boom(*_a: object, **_k: object) -> None:
+            raise AssertionError("scored or tracked despite a failed integrity check")
+
+        monkeypatch.setattr(fe, "check_test_integrity", fail)
+        monkeypatch.setattr(fe, "load_expectations", lambda p: {})
+        monkeypatch.setattr(fe, "evaluate", boom)
+        monkeypatch.setattr(fe.tracking, "run", boom)
+        monkeypatch.setattr(fe, "_already_evaluated", lambda h: [])
+        bundle = _manifest(tmp_path)
+        with pytest.raises(DataIntegrityError, match="test_rows"):
+            fe.main(["--spec", str(_spec(tmp_path)), "--bundle", str(bundle), "--confirm"])

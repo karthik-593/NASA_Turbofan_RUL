@@ -137,6 +137,8 @@ release:
 final_eval:
   enabled: false              # true = the final_eval stage reads the sealed NASA test set
                               # (once per locked spec; the stage still passes --confirm)
+  expectations: configs/data_expectations.json   # row / unit counts the test files must match
+                              # (structure only) before anything is scored
 smoke:                        # `python -m turbofan.pipeline all --smoke`: isolated, minutes
   n_engines: 10               # training engines kept (balanced over subpopulations)
   max_folds: 1                # splits run (of overrides.cv.n_folds x n_repeats)
