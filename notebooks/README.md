@@ -17,3 +17,42 @@ originally logged numbers: 02 (every metric in its decision log and test table) 
 single-seed screen, the cross-dataset means, the 5-seed table and the pooled result in
 `docs/results.md`) reproduce them exactly; 01's cited numbers (lifetimes, sensor stds,
 silhouette scan, RF baseline) do too.
+
+## Outputs policy
+
+Notebooks are committed **with outputs**, executed top-to-bottom in a fresh kernel
+(`uv run jupyter nbconvert --to notebook --execute --inplace <nb>`). Seeds are fixed and the
+machine, GPU and resolved device are recorded in a provenance cell; device selection is
+automatic and not forced (D43). The data audit alone runs inside `repro.cpu_deterministic`
+for its bit-exact rerun check (D34). The nbstripout pre-commit hook keeps outputs and strips
+only execution counts, cell timestamps, kernel info and widget state (D37). Figures are PNG
+at dpi 100; no notebook may exceed 5 MB — report one that does, don't raise the limit.
+
+## Markdown style guide
+
+**Opening cell.** Purpose (≤ 2 lines), questions answered, data version (the DVC hash of
+`data/raw`, printed by code — never typed), outputs produced, decisions informed (D-IDs),
+status (current / archived).
+
+**Each section:** Question → Method (why this method, ≤ 3 lines) → Result (the table or
+figure the code prints) → Takeaway (one line + D-ID).
+
+**Numbers.** Never hand-type a number in markdown that the code computes — it drifts. Refer
+to the printed table or figure, or print the sentence from code with an f-string. If a
+markdown claim states a number — or a qualitative result the next rerun could overturn —
+put an assert cell right before it that checks it.
+
+**"If asked to defend this:"** only at genuinely contestable choices, 1–3 lines.
+
+**Figures.** Every figure has a title, axis labels with units, and n in the title or caption.
+
+**Voice.** First-person engineering voice ("I chose X because Y"); decisions over
+description. Markdown cells ≤ ~6 lines.
+
+**Banned.** "Let's", "In this section we will", restating what the code obviously does,
+emojis, filler summaries, praise of results.
+
+**Archived notebooks** keep their original narrative as the historical record: they get the
+archive banner as their opening cell, a re-execution setup cell, and one-line
+`> **Audit note (D-ID; section):**` notes where a later result contradicts a claim — the
+original claim is never edited. Their original figures and markdown are not restyled.
