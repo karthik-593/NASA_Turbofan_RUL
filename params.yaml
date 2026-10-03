@@ -94,11 +94,14 @@ subpopulation:
   kmeans_n_init: 10
   kmeans_random_state: 0
 
-# -- protocol v2 placeholders (consumed later) ------------------------------------------
+# -- protocol v2 (D46): model selection never reads the test set ------------------------
 cv:
-  n_folds: 5
-  group_by: unit
+  n_folds: 5                  # StratifiedGroupKFold: groups = engine, stratify = subpopulation
+  n_repeats: 3                # reshuffled repeats of the K-fold split
   seed: 0
+  group_by: unit
+  inner_val_frac: 0.2         # share of each fold's training engines held out for early
+                              # stopping (never the fold's held-out engines)
 bootstrap:
   n_boot: 2000
   ci_level: 0.95

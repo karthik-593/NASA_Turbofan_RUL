@@ -210,6 +210,23 @@ _NOTEBOOK_COL_MAP: dict[str, str] = {
 }
 
 
+def load_train(
+    name: str,
+    raw: str | Path,
+    rul_cap: int = DEFAULT_RUL_CAP,
+) -> pd.DataFrame:
+    """Training file only, notebook-style columns, capped ``rul`` — the loader for model
+    selection (protocol v2), which must never open ``test_*`` or ``RUL_*`` files (rule 3)."""
+    if name not in ALL_SUBDATASETS:
+        raise ValueError(f"Unknown sub-dataset: {name}. Choose from {ALL_SUBDATASETS}.")
+    path = Path(raw) / f"train_{name}.txt"
+    if not path.exists():
+        raise FileNotFoundError(f"Expected file not found: {path}")
+    df = _read_txt(path)
+    validate_raw(df, str(path))
+    return _compute_train_rul(df, int(rul_cap)).rename(columns=_NOTEBOOK_COL_MAP)
+
+
 def load_dataset(
     name: str,
     raw: str | Path,

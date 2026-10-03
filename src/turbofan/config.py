@@ -110,6 +110,10 @@ if not 1 <= MIN_HISTORY <= SEQ_LEN:
 MODEL_PARAMS: dict[str, Any] = _get(PARAMS, "models", dict)
 for _key in ("k", "kmeans_n_init", "kmeans_random_state"):
     _get(PARAMS, f"subpopulation.{_key}", int)
+for _key in ("n_folds", "n_repeats", "seed"):
+    _get(PARAMS, f"cv.{_key}", int)
+if not 0.0 < _get(PARAMS, "cv.inner_val_frac", float) < 1.0:
+    raise ParamsError("params.yaml: cv.inner_val_frac must be in (0, 1)")
 SEEDS: tuple[int, ...] = tuple(_get(PARAMS, "seeds", list))
 
 # Raw column layout: unit, cycle, 3 operating settings, 21 sensors.

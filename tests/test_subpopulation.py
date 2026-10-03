@@ -71,9 +71,9 @@ class TestLabels:
 def test_reproduces_audit_section_I(dataset: str, sizes: list[int], n_sensors: int) -> None:
     """reports/data_audit.md §I: the permutation-supported k = 2 split's cluster sizes and the
     number of sensors in the sign vector."""
-    from turbofan.data.loader import load_dataset
+    from turbofan.data.loader import load_train
 
-    tr, _te, _rul = load_dataset(dataset, "data/raw")
+    tr = load_train(dataset, "data/raw")
     assert sign_vectors(tr, dataset).shape[1] == n_sensors
     assert subpopulation_labels(tr, dataset).value_counts().sort_index().tolist() == sizes
 
