@@ -35,7 +35,9 @@ files** (`data.loader.load_train`); the only test-side input is the *label histo
    metric.
 8. **Decision curves.** Rule "remove when predicted RUL ≤ T" run forward on held-out
    trajectories: % of failures caught with lead time ≥ L, % failing in service, mean wasted
-   life (true RUL at removal), versus T.
+   life (true RUL at removal), versus T. Models are compared at **matched operating points**
+   (caught % at fixed wasted-life budgets, paired engine bootstrap), not at equal T, which is
+   not like-for-like.
 9. **Final evaluation** (`evaluation.final_eval`) is the one sealed test read per locked
    candidate: it refuses without `--confirm` or a `locked: true` spec, refuses a second run of
    the same spec, and logs `run_type=final_test`. Selection code may not import it.
@@ -44,7 +46,7 @@ files** (`data.loader.load_train`); the only test-side input is the *label histo
 
 ## Sanity run — FD001
 
-Models at their current default configurations (`params.yaml` `models`), 5 folds × 3 repeats, seed 42, `rul_cap` 125. Subpopulation sizes: group 0: 60 engines, group 1: 40 engines. Devices: LSTM on cuda, XGBoost on cuda (NVIDIA GeForce RTX 4060 Laptop GPU). Wall-clock for the whole run: 5.7 min (fold features 113 s).
+Models at their current default configurations (`params.yaml` `models`), 5 folds × 3 repeats, seed 42, `rul_cap` 125. Subpopulation sizes: group 0: 60 engines, group 1: 40 engines. Devices: LSTM on cuda, XGBoost on cuda (NVIDIA GeForce RTX 4060 Laptop GPU). Wall-clock for the whole run: 5.7 min (fold features 108 s).
 
 **Headline — critical_rmse, deployment view** (95% engine-bootstrap CI):
 
@@ -83,7 +85,7 @@ Benchmark-view bins no held-out trajectory could supply (target points short): n
 | mae | 55.4 [51.5, 59.4] | 34.0 [30.3, 37.8] | 29.8 [26.1, 33.8] | 28.2 [24.4, 32.3] |
 | late_pct | 44.3 [42.4, 46.5] | 42.6 [38.3, 46.9] | 40.0 [35.3, 45.0] | 38.4 [33.8, 43.6] |
 | mean_signed_error | -16.7 [-22.0, -11.0] | -18.5 [-24.1, -12.8] | -18.9 [-23.9, -13.5] | -18.8 [-23.7, -13.7] |
-| nasa_mean_per_engine | 412150.3 [13142.5, 1131702.9] | 61652.5 [2453.1, 175777.8] | 60390.8 [2277.1, 172043.0] | 52876.9 [2056.6, 150251.4] |
+| nasa_mean_per_engine | not reported (D46) | not reported (D46) | not reported (D46) | not reported (D46) |
 | critical_rmse | 75.2 [75.1, 75.3] | 15.1 [13.6, 16.6] | 5.2 [4.8, 5.6] | 4.4 [4.0, 4.7] |
 | critical_late_pct | 100.0 [100.0, 100.0] | 63.1 [57.1, 69.1] | 70.1 [66.5, 74.1] | 65.0 [59.5, 70.1] |
 | critical_mean_signed_error | 74.8 [74.8, 74.9] | 7.8 [5.9, 9.7] | 2.2 [1.7, 2.7] | 1.2 [0.6, 1.7] |
@@ -132,6 +134,8 @@ Points per bucket (deployment view; identical for every model):
 
 ![decision curves](figures/protocol_v2/decision_FD001.png)
 
+Same-T table — **not like-for-like**: the same T removes at different wasted life for different models, so differences here mix better prediction with a different operating point. Compare models in the matched-budget tables below.
+
 | model | T (cycles) | caught_lead_ge_10_pct | caught_lead_ge_20_pct | caught_lead_ge_30_pct | failed_in_service_pct | mean_wasted_life |
 |---|---|---|---|---|---|---|
 | mean | 25 | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 100.0 [100.0, 100.0] | — |
@@ -143,14 +147,49 @@ Points per bucket (deployment view; identical for every model):
 | lstm | 25 | 100.0 [100.0, 100.0] | 74.7 [67.7, 80.7] | 17.7 [12.3, 23.3] | 0.0 [0.0, 0.0] | 24.2 [23.2, 25.1] |
 | lstm | 50 | 100.0 [100.0, 100.0] | 100.0 [100.0, 100.0] | 99.3 [98.0, 100.0] | 0.0 [0.0, 0.0] | 51.4 [49.4, 53.4] |
 
+**Trade-off curves** — caught share (lead ≥ 20 cycles) against mean wasted life, one point per T:
+
+![trade-off curves](figures/protocol_v2/tradeoff_FD001.png)
+
+**Matched operating points** — each model read at the T where its mean wasted life equals the budget (linear interpolation along the T grid; 95% engine-bootstrap CI with the curve re-matched in every replicate):
+
+| model | wasted-life budget | caught lead ≥ 20 (%) [95% CI] | n engines | bootstrap replicates defined |
+|---|---|---|---|---|
+| mean | 20 | budget not reached | 100 | 0% |
+| mean | 30 | budget not reached | 100 | 0% |
+| mean | 40 | budget not reached | 100 | 0% |
+| ridge | 20 | 46.7 [41.2, 52.2] | 100 | 100% |
+| ridge | 30 | 81.3 [75.5, 87.0] | 100 | 100% |
+| ridge | 40 | 96.1 [92.7, 99.1] | 100 | 100% |
+| xgboost | 20 | 47.0 [42.2, 51.4] | 100 | 100% |
+| xgboost | 30 | 95.5 [91.6, 97.9] | 100 | 100% |
+| xgboost | 40 | 100.0 [100.0, 100.0] | 100 | 100% |
+| lstm | 20 | 45.4 [41.7, 49.9] | 100 | 100% |
+| lstm | 30 | 97.7 [94.6, 99.3] | 100 | 100% |
+| lstm | 40 | 99.6 [98.9, 100.0] | 100 | 100% |
+
+Paired differences at matched budgets (same engines, folds, seeds; positive Δ = A catches more):
+
+| A − B | wasted-life budget | Δ caught lead ≥ 20 (pp) [95% CI] | n engines | bootstrap replicates defined |
+|---|---|---|---|---|
+| lstm − xgboost | 20 | -1.5 [-5.7, 3.0] | 100 | 100% |
+| lstm − xgboost | 30 | 2.2 [-1.0, 5.2] | 100 | 100% |
+| lstm − xgboost | 40 | -0.4 [-1.0, 0.0] | 100 | 100% |
+| xgboost − ridge | 20 | 0.3 [-6.1, 6.6] | 100 | 100% |
+| xgboost − ridge | 30 | 14.2 [7.8, 19.3] | 100 | 100% |
+| xgboost − ridge | 40 | 3.9 [0.8, 7.3] | 100 | 100% |
+| ridge − mean | 20 | budget not reached by both | 100 | 0% |
+| ridge − mean | 30 | budget not reached by both | 100 | 0% |
+| ridge − mean | 40 | budget not reached by both | 100 | 0% |
+
 **Wall-clock per model** (fit + predict, summed over folds × seeds):
 
 | model | fit + predict, all folds (s) | per fit (s) | MLflow parent run |
 |---|---|---|---|
-| mean | 0 | 0.0 | `bb9f669699674c5a94cdda1ef195d643` |
-| ridge | 0 | 0.0 | `a9552a2ff93443dbb86da27d10ede45f` |
-| xgboost | 10 | 0.6 | `02e65202e4114c02aefb04c81b897578` |
-| lstm | 129 | 8.6 | `3bb3b682b8044e829f219666a3fe48e1` |
+| mean | 0 | 0.0 | `36bb25672c3048fb897448287b04460d` |
+| ridge | 0 | 0.0 | `e70609f3e50d4ffaa40a7f69bc98d418` |
+| xgboost | 10 | 0.6 | `cd88bba5de0d4f07a4dc68cf992f977e` |
+| lstm | 128 | 8.6 | `8dee5362e50547318421b903013488db` |
 
 ## Compute estimate for the full sweep
 
@@ -159,18 +198,18 @@ Points per bucket (deployment view; identical for every model):
 | mean | 0.0 | 4 | 1200 | 0.0 |
 | ridge | 0.0 | 4 | 1200 | 0.0 |
 | xgboost | 0.6 | 4 | 1200 | 0.4 |
-| lstm | 8.6 | 12 | 3600 | 16.7 |
-| feature preparation | 7.6 per fold | 3 | 180 | 0.7 |
+| lstm | 8.6 | 12 | 3600 | 16.6 |
+| feature preparation | 7.2 per fold | 3 | 180 | 0.7 |
 
 Total ≈ 17.8 h on this machine, assuming: 4 datasets, 5 folds × 3 repeats, 5 seeds (`params.yaml` `seeds`), 4 caps (`rul_cap_grid`), 3 sequence lengths for the LSTM (`seq_len_grid`), the four models of this run at default hyperparameters, per-fit time proportional to training rows, and feature preparation repeated per sequence-length setting (an upper bound: the window grid does not change the flat features). No hyperparameter search is included — each tuned configuration multiplies its model's row.
 
 ## Reproducibility
 
-- Generated: 2026-10-03T08:52:23+00:00
-- Git commit: `e111d0e701643c0eb3531c19d5fa3ac65c221e11`
+- Generated: 2026-10-03T10:34:15+00:00
+- Git commit: `fb044b6667e977953a07472f43667bdb32c0dc3f`
 - DVC data hash (`data/raw`): `43f328008844d7fd56733c63103d09ef.dir`
-- Hardware: CPU only — Intel64 Family 6 Model 183 Stepping 1, GenuineIntel, 28 logical CPUs; OS Windows-10-10.0.26200-SP0
-- Threads: 20 (torch and all native pools pinned); torch deterministic algorithms: False; CUDA initialized: False
+- Hardware: Intel64 Family 6 Model 183 Stepping 1, GenuineIntel, 28 logical CPUs; GPU NVIDIA GeForce RTX 4060 Laptop GPU (driver 581.86, CUDA driver 13.0, torch built for CUDA 13.0); resolved devices: torch (LSTM) on cuda, XGBoost on cuda; OS Windows-10-10.0.26200-SP0
+- Threads: 20 (torch and all native pools pinned); torch deterministic algorithms: False; CUDA initialized: True
 - Python 3.11.15
 
 | Library | Version |
