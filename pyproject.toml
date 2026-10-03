@@ -42,6 +42,23 @@ dev = [
     "optuna>=3.6.0",
 ]
 
+# Local dev env only (D45): on Windows PyPI's torch is CPU-only, so take the CUDA 13.0 build
+# (matches the NVIDIA driver's CUDA version, same torch version as the Docker image's pin).
+# Other platforms use PyPI's torch unchanged. The Docker serve image does not read this: it
+# installs CPU torch from the CPU index and requirements.lock (docker/Dockerfile).
+[tool.uv]
+# Keep the dev torch at the version the Docker image pins (docker/Dockerfile): only the build
+# (CPU -> CUDA) changes here, not the version.
+constraint-dependencies = ["torch==2.11.0; sys_platform == 'win32'"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/turbofan"]
 

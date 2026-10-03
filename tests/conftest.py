@@ -17,6 +17,15 @@ from pathlib import Path
 
 import pytest
 
+# Unit tests fit tiny models and must not initialize CUDA in the shared pytest process: once
+# any test does, every later repro.cpu_deterministic() raises GpuUsedError. Hide the GPU from
+# torch here, before anything imports it; the real CUDA path is covered by
+# tests/test_gpu.py in a subprocess. Set TURBOFAN_TEST_GPU=1 to leave the GPU visible (D45).
+if os.environ.get("TURBOFAN_TEST_GPU") != "1":
+    # "-1", not "": with an empty value this torch build reports is_available() == True
+    # alongside device_count() == 0.
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 _DATASETS = ("FD001", "FD002", "FD003", "FD004")
 RAW_DIR = Path("data/raw")
 
