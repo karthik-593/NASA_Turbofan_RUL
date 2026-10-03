@@ -378,31 +378,45 @@ def test_final_eval_refuses_a_bundle_built_from_another_spec(
 class TestForcedExit:
     """The GPU-teardown workaround ends the process abruptly; nothing may be left RUNNING."""
 
-    def test_active_runs_are_ended_and_flushed_before_termination(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def _setup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[str, dict[str, Any]]:
         from turbofan.pipeline import __main__ as entry
 
         uri = (tmp_path / "mlruns").as_uri()
         mlflow.set_tracking_uri(uri)
         mlflow.set_experiment("turbofan-rul")
-        flushed: list[str] = []
         seen: dict[str, Any] = {}
 
         def terminate() -> None:
             seen["active"] = mlflow.active_run()
             seen["running"] = _running_runs(uri)
-            seen["flushed"] = list(flushed)
 
         monkeypatch.setattr(entry, "_cuda_used", lambda: True)
         monkeypatch.setattr(entry, "_terminate_now", terminate)
-        monkeypatch.setattr(mlflow, "flush_async_logging", lambda: flushed.append("async"))
-        monkeypatch.setattr(mlflow, "flush_artifact_async_logging", lambda: flushed.append("art"))
+        return uri, seen
+
+    def test_active_runs_are_ended_before_termination(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from turbofan.pipeline import __main__ as entry
+
+        _uri, seen = self._setup(tmp_path, monkeypatch)
         mlflow.start_run()
         with mlflow.start_run(nested=True):  # a leaked nested run, as after an interrupted stage
             entry._skip_native_teardown_if_it_crashes()
         assert seen["active"] is None and seen["running"] == []
-        assert sorted(seen["flushed"]) == ["art", "async"]
+
+    def test_exit_with_no_active_run_does_not_start_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # mlflow.flush_*_async_logging() starts a new run when none is active; the exit path
+        # must not call it then (found in a smoke run: one run left RUNNING)
+        from turbofan.pipeline import __main__ as entry
+
+        uri, seen = self._setup(tmp_path, monkeypatch)
+        with mlflow.start_run():
+            pass
+        entry._skip_native_teardown_if_it_crashes()
+        assert seen["running"] == [] and _running_runs(uri) == []
 
     def test_without_cuda_nothing_is_ended_or_terminated(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

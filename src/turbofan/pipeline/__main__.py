@@ -113,15 +113,17 @@ def _cuda_used() -> bool:
 
 
 def _end_mlflow_runs() -> None:
-    """End every still-active MLflow run and flush asynchronous logging, so a forced exit can
-    never leave a run RUNNING or drop a queued write."""
+    """Flush asynchronous logging and end every still-active MLflow run, so a forced exit can
+    never leave a run RUNNING or drop a queued write. The flush happens *inside* each active run:
+    MLflow's ``flush_*_async_logging`` starts a brand-new run when none is active, which would
+    itself be left RUNNING."""
     mlflow = sys.modules.get("mlflow")
     if mlflow is None:
         return
     while mlflow.active_run() is not None:
+        mlflow.flush_artifact_async_logging()
+        mlflow.flush_async_logging()
         mlflow.end_run()
-    mlflow.flush_artifact_async_logging()
-    mlflow.flush_async_logging()
 
 
 def _terminate_now() -> None:
