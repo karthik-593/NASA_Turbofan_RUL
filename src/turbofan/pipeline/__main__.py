@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parents[3]
 SMOKE_DIR = REPO / "smoke"
 SMOKE_EXPERIMENT = "turbofan-rul-smoke"
 SELECTION_DIR = REPO / "selection"
-SELECTION_STAGES = ("cv_select",)
+SELECTION_STAGES = ("cv_select", "identifiability")
 
 
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
@@ -129,7 +129,7 @@ def write_smoke_spec(ctx: Any) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="python -m turbofan.pipeline", description=__doc__)
-    ap.add_argument("stage", choices=(*STAGES, "all"))
+    ap.add_argument("stage", choices=(*STAGES, *SELECTION_STAGES[1:], "all"))
     ap.add_argument("--smoke", action="store_true", help="tiny isolated run (see module doc)")
     ap.add_argument("--keep", action="store_true", help="with --smoke: keep smoke/ from last run")
     ap.add_argument(
@@ -158,7 +158,14 @@ def main(argv: list[str] | None = None) -> None:
     if args.tag:
         prepare_selection(args.tag, args.sets)
 
-    from turbofan.pipeline import cv_select, final_eval_stage, register, train_prod, validate
+    from turbofan.pipeline import (
+        cv_select,
+        final_eval_stage,
+        identifiability,
+        register,
+        train_prod,
+        validate,
+    )
     from turbofan.pipeline.context import build_context
 
     ctx = build_context(args.smoke, tag=args.tag)
@@ -170,6 +177,7 @@ def main(argv: list[str] | None = None) -> None:
         "train_prod": lambda: train_prod.run(ctx),
         "final_eval": lambda: final_eval_stage.run(ctx, args.confirm),
         "register": lambda: register.run(ctx),
+        "identifiability": lambda: identifiability.run(ctx),
     }
     for stage in STAGES if args.stage == "all" else (args.stage,):
         print(f"== stage {stage}{' (smoke)' if ctx.smoke else ''}", flush=True)
