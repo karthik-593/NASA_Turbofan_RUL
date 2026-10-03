@@ -1,0 +1,154 @@
+# validate -> cv_select -> train_prod -> final_eval -> register   (D48)
+#
+#   dvc repro                        run what changed (needs MLflow: `docker compose up -d mlflow`)
+#   dvc exp run -S cv.n_folds=3      try a parameter change in an experiment
+#   dvc metrics show / dvc params diff / dvc plots show
+#
+# Stage code: `python -m turbofan.pipeline <stage>`. Every stage's parameters are declared in
+# `params`, so `dvc params diff` and `dvc exp run` see exactly what each one depends on.
+# Reports, figures and metric JSONs are committed to git (`cache: false`); only the production
+# bundle (`models/prod`) lives in the DVC cache.
+#
+# The sealed test set is read by `final_eval` alone, and only with `final_eval.enabled: true`
+# AND an explicit confirmation given per invocation, never stored in this file:
+#     TURBOFAN_CONFIRM_FINAL_EVAL=1 dvc repro final_eval
+# `validate` and `cv_select` list only train_* (and the RUL label file the benchmark view's
+# sampling target needs) as dependencies.
+
+stages:
+  validate:
+    cmd: python -m turbofan.pipeline validate
+    deps:
+      - data/raw/train_FD001.txt
+      - data/raw/train_FD002.txt
+      - data/raw/train_FD003.txt
+      - data/raw/train_FD004.txt
+      - src/turbofan/data
+      - src/turbofan/config.py
+      - src/turbofan/pipeline
+    params:
+      - rul_cap
+    metrics:
+      - reports/validate.json:
+          cache: false
+
+  cv_select:
+    cmd: python -m turbofan.pipeline cv_select
+    deps:
+      - data/raw/train_${pipeline.dataset}.txt
+      - data/raw/RUL_${pipeline.dataset}.txt
+      - reports/validate.json
+      - src/turbofan
+    params:
+      - seed
+      - seeds
+      - rul_cap
+      - sensors
+      - n_regimes
+      - regime_kmeans
+      - window
+      - seq_len
+      - models
+      - buckets
+      - subpopulation
+      - cv
+      - benchmark_view
+      - decision_curve
+      - bootstrap
+      - validation
+      - serving
+      - pipeline
+    outs:
+      - reports/protocol_v2.md:
+          cache: false
+      - reports/protocol_v2.env.json:
+          cache: false
+      - reports/figures/protocol_v2/decision_${pipeline.dataset}.png:
+          cache: false
+      - reports/figures/protocol_v2/tradeoff_${pipeline.dataset}.png:
+          cache: false
+    metrics:
+      - reports/cv_select/metrics.json:
+          cache: false
+    plots:
+      - reports/cv_select/plots/decision_caught.csv:
+          cache: false
+      - reports/cv_select/plots/decision_wasted.csv:
+          cache: false
+
+  train_prod:
+    cmd: python -m turbofan.pipeline train_prod
+    deps:
+      - ${release.spec}
+      - data/raw/train_${pipeline.dataset}.txt
+      - reports/cv_select/metrics.json
+      - src/turbofan
+    params:
+      - seed
+      - rul_cap
+      - sensors
+      - n_regimes
+      - regime_kmeans
+      - window
+      - seq_len
+      - models
+      - validation
+      - pipeline.dataset
+    outs:
+      - models/prod
+    metrics:
+      - reports/train_prod/metrics.json:
+          cache: false
+
+  final_eval:
+    cmd: python -m turbofan.pipeline final_eval
+    deps:
+      - ${release.spec}
+      - data/raw
+      - reports/train_prod/metrics.json
+      - src/turbofan
+    params:
+      - final_eval.enabled
+      - seed
+      - rul_cap
+      - sensors
+      - n_regimes
+      - regime_kmeans
+      - window
+      - seq_len
+      - models
+      - cv.inner_val_frac
+      - bootstrap
+    metrics:
+      - reports/final_eval/metrics.json:
+          cache: false
+
+  register:
+    cmd: python -m turbofan.pipeline register
+    deps:
+      - models/prod
+      - reports/train_prod/metrics.json
+      - reports/final_eval/metrics.json
+      - src/turbofan
+    outs:
+      - reports/register/registered.json:
+          cache: false
+
+plots:
+  - decision_caught:
+      template: linear
+      x: threshold
+      y:
+        reports/cv_select/plots/decision_caught.csv: [mean, ridge, xgboost, lstm]
+      title: "Failures caught with lead >= L vs removal threshold T (CV, deployment view)"
+      x_label: removal threshold T (predicted RUL, cycles)
+      y_label: "% of held-out trajectories"
+  - decision_wasted:
+      template: linear
+      x: threshold
+      y:
+        reports/cv_select/plots/decision_wasted.csv: [mean, ridge, xgboost, lstm]
+      title: "Mean wasted life at removal vs removal threshold T (CV, deployment view)"
+      x_label: removal threshold T (predicted RUL, cycles)
+      y_label: cycles of life left at removal
+  - reports/figures/protocol_v2/tradeoff_${pipeline.dataset}.png
