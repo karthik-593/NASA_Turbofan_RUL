@@ -20,9 +20,14 @@ import torch
 from turbofan import repro
 from turbofan.config import PARAMS, RUL_CAP, SEED
 from turbofan.data.loader import load_train
-from turbofan.evaluation.compare import CVResult, paired_compare
+from turbofan.evaluation.compare import CVResult, matched_budget_compare, paired_compare
 from turbofan.evaluation.cv_metrics import HEADLINE
-from turbofan.evaluation.decision import LEAD_TIMES
+from turbofan.evaluation.decision import (
+    LEAD_TIMES,
+    MATCHED_LEAD_TIME,
+    WASTED_LIFE_BUDGETS,
+    matched_budget,
+)
 from turbofan.evaluation.run_cv import NOT_REPORTED, CVRun, run_cv
 from turbofan.evaluation.views import deployment_view
 
@@ -160,7 +165,7 @@ def _decision_fig(run: CVRun) -> tuple[Path, pd.DataFrame]:
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), dpi=100)
     rows = []
-    L = LEAD_TIMES[len(LEAD_TIMES) // 2]
+    L = MATCHED_LEAD_TIME
     for name, res in run.results.items():
         c = res.decision
         n_eng = int(c["n_engines"].iloc[0])
@@ -202,6 +207,84 @@ def _decision_fig(run: CVRun) -> tuple[Path, pd.DataFrame]:
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path, pd.DataFrame(rows)
+
+
+def _tradeoff(run: CVRun) -> tuple[Path, pd.DataFrame, pd.DataFrame]:
+    """Trade-off curves (caught share vs mean wasted life, one point per T) and the models
+    compared at matched wasted-life budgets: per model, and paired per model pair."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    L = MATCHED_LEAD_TIME
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(7, 4.8), dpi=100)
+    for name, res in run.results.items():
+        c = res.decision
+        x = c[c["quantity"] == "mean_wasted_life"].set_index("threshold")["estimate"]
+        y = c[c["quantity"] == f"caught_lead_ge_{L}_pct"].set_index("threshold")["estimate"]
+        ax.plot(x, y, marker="o", ms=3, label=name)
+    for budget in WASTED_LIFE_BUDGETS:
+        ax.axvline(budget, color="grey", ls=":", lw=1)
+    n_eng = int(next(iter(run.results.values())).decision["n_engines"].iloc[0])
+    ax.set(
+        title=(
+            f"{run.dataset}: failures caught with lead ≥ {L} cycles vs life wasted\n"
+            f"(one point per T; dotted = matched budgets; n={n_eng} engines)"
+        ),
+        xlabel="mean wasted life at removal (cycles)",
+        ylabel=f"% of held-out trajectories caught with lead ≥ {L}",
+    )
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    path = FIG_DIR / f"tradeoff_{run.dataset}.png"
+    fig.savefig(path, dpi=100)
+    plt.close(fig)
+
+    per_model = []
+    for i, (name, res) in enumerate(run.results.items()):
+        t = matched_budget(deployment_view(res.points), np.random.default_rng([SEED, 500 + i]))
+        for r in t.to_dict("records"):
+            per_model.append(
+                {
+                    "model": name,
+                    "wasted-life budget": f"{r['budget']:g}",
+                    f"caught lead ≥ {L} (%) [95% CI]": (
+                        f"{r['estimate']:.1f} [{r['ci_lo']:.1f}, {r['ci_hi']:.1f}]"
+                        if np.isfinite(r["estimate"])
+                        else "budget not reached"
+                    ),
+                    "n engines": r["n_engines"],
+                    "bootstrap replicates defined": f"{r['boot_defined_share']:.0%}",
+                }
+            )
+    paired = []
+    for k, (a, b) in enumerate(PAIRS):
+        if a not in run.results or b not in run.results:
+            continue
+        ra, rb = run.results[a], run.results[b]
+        t = matched_budget_compare(
+            CVResult(run.dataset, a, ra.rul_cap, deployment_view(ra.points)),
+            CVResult(run.dataset, b, rb.rul_cap, deployment_view(rb.points)),
+            np.random.default_rng([SEED, 600 + k]),
+        )
+        for r in t.to_dict("records"):
+            paired.append(
+                {
+                    "A − B": f"{a} − {b}",
+                    "wasted-life budget": f"{r['budget']:g}",
+                    f"Δ caught lead ≥ {L} (pp) [95% CI]": (
+                        f"{r['diff']:.1f} [{r['diff_ci_lo']:.1f}, {r['diff_ci_hi']:.1f}]"
+                        if np.isfinite(r["diff"])
+                        else "budget not reached by both"
+                    ),
+                    "n engines": r["n_engines"],
+                    "bootstrap replicates defined": f"{r['boot_defined_share']:.0%}",
+                }
+            )
+    return path, pd.DataFrame(per_model), pd.DataFrame(paired)
 
 
 def _compute_estimate(run: CVRun, raw: str | Path) -> tuple[pd.DataFrame, str]:
@@ -294,7 +377,9 @@ files** (`data.loader.load_train`); the only test-side input is the *label histo
    metric.
 8. **Decision curves.** Rule "remove when predicted RUL ≤ T" run forward on held-out
    trajectories: % of failures caught with lead time ≥ L, % failing in service, mean wasted
-   life (true RUL at removal), versus T.
+   life (true RUL at removal), versus T. Models are compared at **matched operating points**
+   (caught % at fixed wasted-life budgets, paired engine bootstrap), not at equal T, which is
+   not like-for-like.
 9. **Final evaluation** (`evaluation.final_eval`) is the one sealed test read per locked
    candidate: it refuses without `--confirm` or a `locked: true` spec, refuses a second run of
    the same spec, and logs `run_type=final_test`. Selection code may not import it.
@@ -305,6 +390,7 @@ files** (`data.loader.load_train`); the only test-side input is the *label histo
 
 def write_report(run: CVRun, raw: str | Path, ctx: dict[str, object], wall: float) -> Path:
     fig, decision_tab = _decision_fig(run)
+    trade_fig, trade_model, trade_paired = _tradeoff(run)
     est, est_note = _compute_estimate(run, raw)
     short = {k: v for res in run.results.values() for k, v in res.benchmark_shortfall.items()}
     n_fits = run.n_folds * run.n_repeats * len(run.seeds)
@@ -376,7 +462,27 @@ def write_report(run: CVRun, raw: str | Path, ctx: dict[str, object], wall: floa
         "",
         f"![decision curves]({fig.relative_to(REPORT.parent).as_posix()})",
         "",
+        "Same-T table — **not like-for-like**: the same T removes at different wasted life for "
+        "different models, so differences here mix better prediction with a different "
+        "operating point. Compare models in the matched-budget tables below.",
+        "",
         _md(decision_tab),
+        "",
+        f"**Trade-off curves** — caught share (lead ≥ {MATCHED_LEAD_TIME} cycles) against mean "
+        "wasted life, one point per T:",
+        "",
+        f"![trade-off curves]({trade_fig.relative_to(REPORT.parent).as_posix()})",
+        "",
+        "**Matched operating points** — each model read at the T where its mean wasted life "
+        "equals the budget (linear interpolation along the T grid; 95% engine-bootstrap CI with "
+        "the curve re-matched in every replicate):",
+        "",
+        _md(trade_model),
+        "",
+        "Paired differences at matched budgets (same engines, folds, seeds; positive Δ = A "
+        "catches more):",
+        "",
+        _md(trade_paired),
         "",
         "**Wall-clock per model** (fit + predict, summed over folds × seeds):",
         "",

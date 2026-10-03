@@ -10,6 +10,7 @@ from turbofan.evaluation.compare import (
     CAP_INVARIANT,
     CapComparisonError,
     CVResult,
+    matched_budget_compare,
     paired_compare,
 )
 
@@ -134,3 +135,35 @@ class TestReadings:
         )
         assert out["diff"] == pytest.approx(-0.5)
         assert out["diff_ci_hi"] - out["diff_ci_lo"] < 1e-9
+
+
+class TestMatchedBudget:
+    def test_better_model_catches_more_at_equal_wasted_life(self) -> None:
+        good, bad = _points(0.0, seed=1), _points(12.0, seed=2)
+        out = matched_budget_compare(
+            _res("good", good),
+            _res("bad", bad),
+            np.random.default_rng(0),
+            budgets=[20.0, 30.0],
+            lead_time=20,
+            n_boot=60,
+        )
+        assert list(out["budget"]) == [20.0, 30.0] and (out["n_engines"] == 30).all()
+        assert (out["diff"] >= 0).all() and (out["diff"] > 0).any()
+        assert (out["diff_ci_lo"] <= out["diff"]).all() and (out["diff"] <= out["diff_ci_hi"]).all()
+        assert np.allclose(out["diff"], out["estimate_a"] - out["estimate_b"])
+
+    def test_identical_candidates_have_zero_difference(self) -> None:
+        p = _points(3.0)
+        out = matched_budget_compare(
+            _res("a", p), _res("b", p), np.random.default_rng(0), budgets=[20.0], n_boot=30
+        )
+        assert out["diff"].iloc[0] == 0.0
+        assert out["diff_ci_lo"].iloc[0] == out["diff_ci_hi"].iloc[0] == 0.0
+
+    def test_refuses_unpaired_and_cross_dataset(self) -> None:
+        p = _points(1.0)
+        with pytest.raises(ValueError, match="not paired"):
+            matched_budget_compare(_res("a", p), _res("b", p.iloc[10:]), np.random.default_rng(0))
+        with pytest.raises(ValueError, match="never pooled"):
+            matched_budget_compare(_res("a", p), _res("b", p, ds="FD002"), np.random.default_rng(0))

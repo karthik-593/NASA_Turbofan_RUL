@@ -124,4 +124,6 @@ def test_report_writer_end_to_end(
     assert "## Sanity run — FD001" in text and "ridge − mean" in text
     assert "## Compute estimate for the full sweep" in text
     assert (rep.FIG_DIR / "decision_FD001.png").exists()
+    assert (rep.FIG_DIR / "tradeoff_FD001.png").exists()
+    assert "Matched operating points" in text and "not like-for-like" in text
     assert path.with_suffix(".env.json").exists()

@@ -110,6 +110,9 @@ decision_curve:               # D46: rule "remove when predicted RUL <= T"; ASSU
   t_max: 125
   t_step: 5
   lead_times: [10, 20, 30]    # ASSUMPTION: lead times (cycles) a removal must leave to count
+  matched_lead_time: 20       # ASSUMPTION (D47): L of the matched-operating-point comparison
+  wasted_life_budgets: [20, 30, 40]  # ASSUMPTION (D47): mean wasted life (cycles) at which
+                              # models are compared; linear interpolation along the T grid
 bootstrap:                    # engine-level bootstrap for every CV metric (rule 4)
   n_boot: 1000
   ci_level: 0.95

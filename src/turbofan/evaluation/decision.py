@@ -8,6 +8,15 @@ trajectory the rule never triggers on fails in service.
 Per threshold T: share of failures caught with lead time >= L (for each L), share failing in
 service, and mean wasted life over removed engines. CIs resample engines (all of an engine's
 trajectories together), as for every protocol-v2 metric.
+
+Models are compared at **matched operating points** (``matched_budget``): the same T removes
+at different wasted life for different models, so comparing at equal T is not like-for-like.
+Instead, for a wasted-life budget B, each model's caught share (lead >= L) is read off its own
+curve where mean wasted life equals B. Mean wasted life is not monotone in T in a sample (the
+set of removed engines changes with T), so its running maximum over increasing T is used and B is
+matched at the lowest T that reaches it, by linear interpolation between grid points. A budget
+outside a curve's range is undefined (NaN) for that curve; the share of bootstrap replicates
+in which it is defined is reported.
 """
 
 from __future__ import annotations
@@ -21,13 +30,27 @@ import pandas as pd
 from turbofan.config import PARAMS
 from turbofan.evaluation.cv_metrics import CI_LEVEL, N_BOOT, engine_weights
 
-__all__ = ["THRESHOLDS", "LEAD_TIMES", "removal_lead_times", "decision_curve"]
+__all__ = [
+    "THRESHOLDS",
+    "LEAD_TIMES",
+    "MATCHED_LEAD_TIME",
+    "WASTED_LIFE_BUDGETS",
+    "removal_lead_times",
+    "decision_curve",
+    "engine_sums",
+    "caught_at_budgets",
+    "require_increasing",
+    "caught_at_budget",
+    "matched_budget",
+]
 
 _D = PARAMS["decision_curve"]
 THRESHOLDS: list[float] = [
     float(t) for t in np.arange(_D["t_min"], _D["t_max"] + _D["t_step"] / 2, _D["t_step"])
 ]
 LEAD_TIMES: list[int] = list(_D["lead_times"])
+MATCHED_LEAD_TIME: int = int(_D["matched_lead_time"])
+WASTED_LIFE_BUDGETS: list[float] = [float(b) for b in _D["wasted_life_budgets"]]
 
 F64 = npt.NDArray[np.float64]
 
@@ -50,24 +73,17 @@ def removal_lead_times(points: pd.DataFrame, thresholds: list[float] = THRESHOLD
     return out
 
 
-def decision_curve(
-    points: pd.DataFrame,
-    rng: np.random.Generator,
-    thresholds: list[float] = THRESHOLDS,
-    lead_times: list[int] = LEAD_TIMES,
-    n_boot: int = N_BOOT,
-    ci_level: float = CI_LEVEL,
-) -> pd.DataFrame:
-    """Tidy curve: one row per (T, quantity) with estimate and engine-bootstrap CI.
-
-    Quantities: ``caught_lead_ge_<L>_pct``, ``failed_in_service_pct``, ``mean_wasted_life``.
-    """
+def engine_sums(
+    points: pd.DataFrame, thresholds: list[float], lead_times: list[int]
+) -> tuple[npt.NDArray[np.int64], dict[str, F64]]:
+    """Per-engine sufficient statistics of the rule at each T: ``(engines, sums)`` with each
+    array ``(n_engines, n_T)``; engines sorted by unit id. Trajectories of one engine are
+    summed together so that bootstrap weights resample engines."""
     lead = removal_lead_times(points, thresholds)
     lt = lead[list(map(float, thresholds))].to_numpy(float)  # (n_traj, n_T)
-    units = lead["unit"].to_numpy()
-    uniq, inv = np.unique(units, return_inverse=True)
+    uniq, inv = np.unique(lead["unit"].to_numpy(), return_inverse=True)
 
-    def per_engine(x: F64) -> F64:  # sum trajectories of each engine -> (n_engines, n_T)
+    def per_engine(x: F64) -> F64:
         out: F64 = np.zeros((len(uniq), x.shape[1]))
         np.add.at(out, inv, x)
         return out
@@ -80,6 +96,87 @@ def decision_curve(
         "wasted": per_engine(np.where(removed, lt, 0.0)),
         **{f"caught_{L}": per_engine((removed & (lt >= L)).astype(float)) for L in lead_times},
     }
+    return uniq, sums
+
+
+def require_increasing(thresholds: list[float]) -> None:
+    if any(b <= a for a, b in zip(thresholds, thresholds[1:], strict=False)):
+        raise ValueError("thresholds must be strictly increasing for operating-point matching")
+
+
+def caught_at_budget(caught: F64, wasted: F64, budget: float) -> float:
+    """Caught share at the T where mean wasted life reaches ``budget`` (both arrays indexed by
+    increasing T). NaN when the curve never reaches the budget."""
+    ok = np.isfinite(wasted) & np.isfinite(caught)
+    if not ok.any():
+        return float("nan")
+    w = np.maximum.accumulate(wasted[ok])
+    if not w[0] <= budget <= w[-1]:
+        return float("nan")
+    return float(np.interp(budget, w, caught[ok]))
+
+
+def caught_at_budgets(sums: dict[str, F64], w: F64, budgets: list[float], lead_time: int) -> F64:
+    """``(r, n_budgets)``: caught share (lead >= L) at each budget, per weight row of ``w``."""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        caught = 100 * (w @ sums[f"caught_{lead_time}"]) / (w @ sums["n"])
+        wasted = (w @ sums["wasted"]) / (w @ sums["removed"])
+    out: F64 = np.array(
+        [
+            [caught_at_budget(c, ws, b) for b in budgets]
+            for c, ws in zip(caught, wasted, strict=True)
+        ]
+    )
+    return out
+
+
+def matched_budget(
+    points: pd.DataFrame,
+    rng: np.random.Generator,
+    budgets: list[float] = WASTED_LIFE_BUDGETS,
+    lead_time: int = MATCHED_LEAD_TIME,
+    thresholds: list[float] = THRESHOLDS,
+    n_boot: int = N_BOOT,
+    ci_level: float = CI_LEVEL,
+) -> pd.DataFrame:
+    """One row per budget: caught share (lead >= ``lead_time``) at that mean wasted life, with
+    engine-bootstrap CI, ``n_engines`` and the share of replicates in which it is defined."""
+    require_increasing(thresholds)
+    uniq, sums = engine_sums(points, thresholds, [lead_time])
+    est = caught_at_budgets(sums, np.ones((1, len(uniq))), budgets, lead_time)[0]
+    boot = caught_at_budgets(sums, engine_weights(len(uniq), n_boot, rng), budgets, lead_time)
+    a = (1 - ci_level) / 2
+    rows = []
+    for j, b in enumerate(budgets):
+        d = boot[:, j][np.isfinite(boot[:, j])]
+        lo, hi = np.quantile(d, [a, 1 - a]) if len(d) else (np.nan, np.nan)
+        rows.append(
+            {
+                "budget": b,
+                "estimate": float(est[j]),
+                "ci_lo": float(lo),
+                "ci_hi": float(hi),
+                "n_engines": len(uniq),
+                "boot_defined_share": float(np.isfinite(boot[:, j]).mean()),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def decision_curve(
+    points: pd.DataFrame,
+    rng: np.random.Generator,
+    thresholds: list[float] = THRESHOLDS,
+    lead_times: list[int] = LEAD_TIMES,
+    n_boot: int = N_BOOT,
+    ci_level: float = CI_LEVEL,
+) -> pd.DataFrame:
+    """Tidy curve: one row per (T, quantity) with estimate and engine-bootstrap CI.
+
+    Quantities: ``caught_lead_ge_<L>_pct``, ``failed_in_service_pct``, ``mean_wasted_life``.
+    """
+    uniq, sums = engine_sums(points, thresholds, lead_times)
+    n_traj = int(sums["n"][:, 0].sum())
 
     def quantities(w: F64) -> dict[str, F64]:  # w: (r, n_engines) -> each (r, n_T)
         n = w @ sums["n"]
@@ -109,7 +206,7 @@ def decision_curve(
                     "ci_lo": float(lo[j]),
                     "ci_hi": float(hi[j]),
                     "n_engines": len(uniq),
-                    "n_trajectories": len(lt),
+                    "n_trajectories": n_traj,
                 }
             )
     return pd.DataFrame(rows)

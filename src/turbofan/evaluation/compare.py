@@ -9,6 +9,11 @@ engines, same cycles, same repeat x fold split, same seeds. Two complementary re
 - **Wilcoxon signed-rank** over the fold x seed results: the metric of A and of B on each
   (repeat, fold, seed) held-out set, as paired samples.
 
+A third, decision-level reading, ``matched_budget_compare``: the caught share (lead >= L) of
+each candidate at the *same mean wasted life*, not at the same removal threshold T — the same T
+removes at different wasted life for different models, so a same-T comparison is not
+like-for-like. Paired engine bootstrap, the curves re-matched in every replicate.
+
 Never across datasets (FD00x results are never pooled or averaged). Candidates trained with
 different ``rul_cap`` are only comparable on cap-invariant metrics (D01): critical-bucket
 RMSE (truth < 25 is never capped) and RMSE against uncapped truth; anything else raises
@@ -21,6 +26,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from scipy import stats as sps
 
@@ -32,8 +38,22 @@ from turbofan.evaluation.cv_metrics import (
     engine_weights,
     metrics_from_weights,
 )
+from turbofan.evaluation.decision import (
+    MATCHED_LEAD_TIME,
+    THRESHOLDS,
+    WASTED_LIFE_BUDGETS,
+    caught_at_budgets,
+    engine_sums,
+    require_increasing,
+)
 
-__all__ = ["CVResult", "CapComparisonError", "CAP_INVARIANT", "paired_compare"]
+__all__ = [
+    "CVResult",
+    "CapComparisonError",
+    "CAP_INVARIANT",
+    "paired_compare",
+    "matched_budget_compare",
+]
 
 KEYS = ["unit", "cycle", "repeat", "fold", "seed"]
 # (metric, truth) pairs that do not depend on the training cap (D01)
@@ -171,3 +191,71 @@ def paired_compare(
         "per_engine": per_engine,
         "per_split": splits,
     }
+
+
+def matched_budget_compare(
+    a: CVResult,
+    b: CVResult,
+    rng: np.random.Generator,
+    budgets: list[float] = WASTED_LIFE_BUDGETS,
+    lead_time: int = MATCHED_LEAD_TIME,
+    thresholds: list[float] = THRESHOLDS,
+    n_boot: int = N_BOOT,
+    ci_level: float = CI_LEVEL,
+) -> pd.DataFrame:
+    """Caught share (lead >= ``lead_time``) of A and B at equal mean wasted life, one row per
+    budget: each side's estimate with CI, the paired difference A - B (positive = A catches
+    more) with CI, ``n_engines`` and the share of replicates where both sides are defined.
+
+    Every replicate draws one set of engines, re-derives both curves on it, matches each at the
+    budget, and differences them. Datasets and pairing are checked as in ``paired_compare``.
+    """
+    if a.dataset != b.dataset:
+        raise ValueError(
+            f"comparisons are per dataset — got {a.dataset} vs {b.dataset}; FD00x results "
+            "are never pooled or averaged"
+        )
+    require_increasing(thresholds)
+    m = _paired_frame(a, b)
+    side = {
+        s: m[[*KEYS, "rul_true_a"]]
+        .rename(columns={"rul_true_a": "rul_true"})
+        .assign(pred=m[f"pred_{s}"])
+        for s in ("a", "b")
+    }
+    sums = {}
+    engines = {}
+    for s, pts in side.items():
+        engines[s], sums[s] = engine_sums(pts, thresholds, [lead_time])
+    if not np.array_equal(engines["a"], engines["b"]):
+        raise ValueError("not paired: the candidates cover different engines")
+    n_eng = len(engines["a"])
+    est = {s: caught_at_budgets(sums[s], np.ones((1, n_eng)), budgets, lead_time)[0] for s in sums}
+    w = engine_weights(n_eng, n_boot, rng)
+    boot = {s: caught_at_budgets(sums[s], w, budgets, lead_time) for s in sums}
+    q = [(1 - ci_level) / 2, 1 - (1 - ci_level) / 2]
+
+    def ci(x: npt.NDArray[np.float64]) -> tuple[float, float]:
+        x = x[np.isfinite(x)]
+        lo, hi = np.quantile(x, q) if len(x) else (np.nan, np.nan)
+        return float(lo), float(hi)
+
+    rows = []
+    for j, bud in enumerate(budgets):
+        diff = boot["a"][:, j] - boot["b"][:, j]
+        row: dict[str, Any] = {"budget": bud}
+        for s, name in (("a", a.name), ("b", b.name)):
+            lo, hi = ci(boot[s][:, j])
+            row[f"{s}"] = name
+            row[f"estimate_{s}"] = float(est[s][j])
+            row[f"ci_lo_{s}"], row[f"ci_hi_{s}"] = lo, hi
+        d_lo, d_hi = ci(diff)
+        row.update(
+            diff=float(est["a"][j] - est["b"][j]),
+            diff_ci_lo=d_lo,
+            diff_ci_hi=d_hi,
+            n_engines=n_eng,
+            boot_defined_share=float(np.isfinite(diff).mean()),
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)

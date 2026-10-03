@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from turbofan.evaluation.decision import decision_curve, removal_lead_times
+from turbofan.evaluation.decision import (
+    caught_at_budget,
+    decision_curve,
+    matched_budget,
+    removal_lead_times,
+)
 
 
 def _traj(n_units: int = 10, life: int = 100, bias: float = 0.0, repeats: int = 1) -> pd.DataFrame:
@@ -79,3 +84,41 @@ def test_trajectories_of_one_engine_resampled_together() -> None:
     row = cur[cur["quantity"] == "caught_lead_ge_10_pct"].iloc[0]
     assert row["n_engines"] == 8 and row["n_trajectories"] == 24
     assert row["ci_lo"] == row["ci_hi"] == pytest.approx(100.0)
+
+
+def test_caught_at_budget_interpolates_and_flags_unreachable() -> None:
+    wasted = np.array([np.nan, 10.0, 20.0, 30.0])
+    caught = np.array([0.0, 0.0, 100.0, 100.0])
+    assert caught_at_budget(caught, wasted, 15.0) == 50.0
+    assert caught_at_budget(caught, wasted, 30.0) == 100.0
+    assert np.isnan(caught_at_budget(caught, wasted, 5.0))  # below the curve
+    assert np.isnan(caught_at_budget(caught, wasted, 31.0))  # above the curve
+    assert np.isnan(caught_at_budget(caught, np.full(4, np.nan), 15.0))
+
+
+def test_caught_at_budget_uses_running_max_of_non_monotone_wasted() -> None:
+    wasted = np.array([10.0, 30.0, 20.0, 40.0])  # dips at T index 2
+    caught = np.array([0.0, 50.0, 60.0, 100.0])
+    # running max 10, 30, 30, 40: budget 35 lies between the last two points
+    assert caught_at_budget(caught, wasted, 35.0) == pytest.approx(80.0)
+
+
+def test_matched_budget_perfect_model() -> None:
+    t = matched_budget(
+        _traj(n_units=8),
+        np.random.default_rng(0),
+        budgets=[15.0, 25.0, 500.0],
+        lead_time=20,
+        thresholds=[0.0, 10.0, 20.0, 30.0],
+        n_boot=40,
+    )
+    est = t.set_index("budget")
+    assert est.loc[15.0, "estimate"] == 50.0  # linear between T=10 (0%) and T=20 (100%)
+    assert est.loc[25.0, "estimate"] == 100.0
+    assert np.isnan(est.loc[500.0, "estimate"]) and est.loc[500.0, "boot_defined_share"] == 0.0
+    assert (t["n_engines"] == 8).all()
+
+
+def test_matched_budget_requires_increasing_thresholds() -> None:
+    with pytest.raises(ValueError, match="strictly increasing"):
+        matched_budget(_traj(), np.random.default_rng(0), thresholds=[10.0, 5.0])
