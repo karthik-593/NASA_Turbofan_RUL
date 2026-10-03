@@ -153,6 +153,12 @@ class LSTMRUL:
         X_va: npt.NDArray[np.float32],
         y_va: npt.NDArray[np.float32],
     ) -> Self:
+        """Train with early stopping on validation MSE.
+
+        Seeded (torch, numpy and the DataLoader's own shuffle generator), but not forced to
+        be bit-deterministic: GPU kernels and thread scheduling may differ in the last bits
+        between runs, which the seed x fold CIs of model comparisons absorb (D43).
+        """
         torch.manual_seed(self.cfg["seed"])
         np.random.seed(self.cfg["seed"])
         self.net = _Net(
@@ -167,6 +173,9 @@ class LSTMRUL:
             TensorDataset(torch.tensor(X_tr), torch.tensor(y_tr)),
             batch_size=self.cfg["batch_size"],
             shuffle=True,
+            # own seeded stream: the shuffle order depends only on the seed, not on how much
+            # of the global torch RNG anything else consumed first
+            generator=torch.Generator().manual_seed(self.cfg["seed"]),
         )
         Xva = torch.tensor(X_va).to(self.device)
         yva = torch.tensor(y_va).to(self.device)

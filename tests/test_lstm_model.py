@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from turbofan.models.lstm_model import (
     LSTMRUL,
@@ -167,3 +168,25 @@ class TestSaveLoad:
         path = tmp_path / "nested" / "dir" / "model.pt"
         model.save(path)
         assert path.exists()
+
+
+class TestDeterminism:
+    """Seeded training (D42). Bit-identity is checked on CPU only; GPU runs are not required
+    to be bit-deterministic (D43)."""
+
+    def test_two_fits_same_seed_are_bit_identical(self) -> None:
+        m1, X, _ = _fitted()
+        m2, _, _ = _fitted()
+        assert m1.net is not None and m2.net is not None
+        for (k, a), (_, b) in zip(
+            m1.net.state_dict().items(), m2.net.state_dict().items(), strict=True
+        ):
+            assert torch.equal(a, b), k
+        np.testing.assert_array_equal(m1.predict(X), m2.predict(X))
+
+    def test_independent_of_prior_global_rng_use(self) -> None:
+        m1, X, _ = _fitted()
+        torch.rand(1000)  # consume the global stream
+        np.random.rand(1000)
+        m2, _, _ = _fitted()
+        np.testing.assert_array_equal(m1.predict(X), m2.predict(X))
