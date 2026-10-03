@@ -124,3 +124,28 @@ validation:
 serving:
   min_history: 10             # ASSUMPTION (D39): fewest cycles /predict accepts; shorter
                               # histories than seq_len are padded + masked (D11)
+
+# -- pipeline (dvc.yaml; D48) -----------------------------------------------------------
+pipeline:
+  dataset: FD001              # the dataset the cv_select / train_prod / register stages run on
+  models: [mean, ridge, xgboost, lstm]
+  seeds: [42]                 # model seeds of cv_select (a subset of `seeds`; D24)
+  resume: true                # cv_select reloads splits MLflow already holds (D49)
+release:
+  spec: locked.yaml           # the locked candidate (evaluation.spec format); written by a human
+                              # after reading reports/protocol_v2.md, never by the pipeline
+final_eval:
+  enabled: false              # true = the final_eval stage reads the sealed NASA test set
+                              # (once per locked spec; the stage still passes --confirm)
+smoke:                        # `python -m turbofan.pipeline all --smoke`: isolated, minutes
+  n_engines: 10               # training engines kept (balanced over subpopulations)
+  max_folds: 1                # splits run (of overrides.cv.n_folds x n_repeats)
+  spec_model: lstm            # candidate the generated smoke spec locks (exercises the budget)
+  overrides:                  # merged over this file for the smoke run only
+    pipeline: {dataset: FD001}
+    cv: {n_folds: 2, n_repeats: 1, inner_val_frac: 0.4}  # 2 = fewest folds StratifiedGroupKFold
+                              # allows; 0.4 keeps >= 2 inner-validation engines of 5
+    bootstrap: {n_boot: 50}
+    models:
+      xgboost: {params: {n_estimators: 20}}
+      lstm: {max_epochs: 3, patience: 2}

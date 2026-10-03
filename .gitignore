@@ -74,3 +74,6 @@ docker/volumes/
 # Logs
 *.log
 logs/
+
+# DVC smoke-run outputs (python -m turbofan.pipeline all --smoke)
+smoke/
