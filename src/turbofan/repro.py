@@ -184,6 +184,30 @@ def environment_context(*, seeds: Mapping[str, int], n_threads: int) -> dict[str
     }
 
 
+def with_device_state(ctx: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy of ``ctx`` with the device fields re-read now. Call it after the model runs: the
+    devices *resolved* by a run and whether CUDA was initialized are only known once models
+    have fitted, so a context captured before them cannot report the GPU actually used."""
+    return {
+        **ctx,
+        "torch_cuda_initialized": _cuda_initialized(),
+        "devices": resolved_devices(),
+    }
+
+
+def _hardware_line(ctx: Mapping[str, Any]) -> str:
+    cpu = f"{ctx['processor'] or ctx['machine']}, {ctx['logical_cpus']} logical CPUs"
+    dev = ctx["devices"]
+    if "cuda" not in (dev["torch"], dev["xgboost"]):
+        return f"CPU only — {cpu}; OS {ctx['os']}"
+    return (
+        f"{cpu}; GPU {dev['gpu_name']} (driver {dev['gpu_driver']}, CUDA driver "
+        f"{dev['cuda_driver_version']}, torch built for CUDA {dev['torch_cuda_build']}); "
+        f"resolved devices: torch (LSTM) on {dev['torch']}, XGBoost on {dev['xgboost']}; "
+        f"OS {ctx['os']}"
+    )
+
+
 def mismatches(recorded: Mapping[str, Any], current: Mapping[str, Any]) -> list[str]:
     """Names of the reproducibility-relevant fields that differ between two contexts."""
     return [k for k in _MUST_MATCH if recorded.get(k) != current.get(k)]
@@ -205,8 +229,7 @@ def render_markdown(ctx: Mapping[str, Any]) -> str:
         f"- Generated: {ctx['timestamp_utc']}",
         f"- Git commit: `{ctx['git_commit']}`{dirty if ctx['git_dirty'] else ''}",
         f"- DVC data hash (`data/raw`): `{ctx['dvc_data_hash']}`",
-        f"- Hardware: CPU only — {ctx['processor'] or ctx['machine']}, "
-        f"{ctx['logical_cpus']} logical CPUs; OS {ctx['os']}",
+        f"- Hardware: {_hardware_line(ctx)}",
         f"- Threads: {ctx['n_threads']} (torch and all native pools pinned); "
         f"torch deterministic algorithms: {ctx['torch_deterministic']}; "
         f"CUDA initialized: {ctx['torch_cuda_initialized']}",

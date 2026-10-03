@@ -406,10 +406,12 @@ def main(argv: list[str] | None = None) -> None:
     args = ap.parse_args(argv)
     seeds = {f"model_seed_{s}": s for s in args.seeds}
     seeds.update({"cv_seed": PARAMS["cv"]["seed"], "bootstrap_and_views_seed": SEED})
-    # provenance first, before anything is written (cf. D34 / item 0)
+    # git/data provenance first, before anything is written (cf. D34 / item 0)
     ctx = repro.environment_context(seeds=seeds, n_threads=torch.get_num_threads())
     t0 = time.perf_counter()
     run = run_cv(args.dataset, args.models, args.seeds, args.raw, track=True)
+    # device state only exists after the models ran (GPU resolved, CUDA initialized)
+    ctx = repro.with_device_state(ctx)
     path = write_report(run, args.raw, ctx, time.perf_counter() - t0)
     print(f"wrote {path}")
 

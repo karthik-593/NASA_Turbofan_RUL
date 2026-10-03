@@ -97,11 +97,42 @@ class TestRenderMarkdown:
             ctx = repro.environment_context(seeds={"regime_kmeans": 0}, n_threads=1)
         md = repro.render_markdown(ctx)
         assert md.startswith("## Reproducibility")
-        assert "CPU only" in md
+        assert ("CPU only" in md) == (
+            "cuda" not in (ctx["devices"]["torch"], ctx["devices"]["xgboost"])
+        )
         assert ctx["git_commit"] in md
         assert f"| numpy | {np.__version__} |" in md
         assert "| regime_kmeans | 0 |" in md
         assert "`cfg_REGIME_KMEANS_SEED=0`" in md
+
+    def test_hardware_line_reports_gpu_actually_used(self) -> None:
+        with repro.cpu_deterministic(n_threads=1):
+            ctx = repro.environment_context(seeds={}, n_threads=1)
+        gpu = {
+            "torch": "cuda",
+            "xgboost": "cuda",
+            "gpu_name": "RTX Test",
+            "gpu_driver": "1.0",
+            "cuda_driver_version": "12.4",
+            "torch_cuda_build": "12.4",
+        }
+        md = repro.render_markdown({**ctx, "devices": gpu})
+        assert "CPU only" not in md and "GPU RTX Test" in md and "XGBoost on cuda" in md
+        cpu = {**gpu, "torch": "cpu", "xgboost": "cpu"}
+        assert "CPU only" in repro.render_markdown({**ctx, "devices": cpu})
+        mixed = {**gpu, "torch": "cpu"}  # e.g. CPU-only torch build with XGBoost on the GPU
+        md = repro.render_markdown({**ctx, "devices": mixed})
+        assert "CPU only" not in md and "torch (LSTM) on cpu" in md
+
+    def test_with_device_state_rereads_devices(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with repro.cpu_deterministic(n_threads=1):
+            ctx = repro.environment_context(seeds={}, n_threads=1)
+        fake = {**ctx["devices"], "xgboost": "cuda", "gpu_name": "RTX Test"}
+        monkeypatch.setattr(repro, "resolved_devices", lambda: fake)
+        monkeypatch.setattr(repro, "_cuda_initialized", lambda: True)
+        out = repro.with_device_state(ctx)
+        assert out["devices"] == fake and out["torch_cuda_initialized"] is True
+        assert out["git_commit"] == ctx["git_commit"] and out["seeds"] == ctx["seeds"]
 
     def test_empty_seeds_stated_explicitly(self) -> None:
         with repro.cpu_deterministic(n_threads=1):
