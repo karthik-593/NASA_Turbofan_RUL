@@ -102,6 +102,7 @@ def run(ctx: Context) -> Path:
             stats,
             seed=seed,
             metrics={"refit": refit_stats},
+            extra={"spec_hash": h, "refit": "all_training_engines"},
         )
         if active is not None:
             mlflow.log_metrics(refit_stats)

@@ -24,8 +24,10 @@ def no_data(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(*_a: object, **_k: object) -> None:
         raise AssertionError("data was loaded")
 
-    for name in ("load_dataset", "load_train"):
-        monkeypatch.setattr(fe, name, boom)
+    monkeypatch.setattr(fe, "load_dataset", boom)
+
+
+BUNDLE = "no-such-bundle"  # refusals must fire before any bundle is opened
 
 
 def _spec(tmp_path: Path, **over: object) -> Path:
@@ -39,28 +41,28 @@ def _spec(tmp_path: Path, **over: object) -> Path:
 class TestRefusals:
     def test_refuses_without_confirm(self, tmp_path: Path, no_data: None) -> None:
         with pytest.raises(fe.FinalEvalRefused, match="--confirm"):
-            fe.main(["--spec", str(_spec(tmp_path))])
+            fe.main(["--spec", str(_spec(tmp_path)), "--bundle", BUNDLE])
 
     def test_refuses_unlocked_spec(self, tmp_path: Path, no_data: None) -> None:
         with pytest.raises(fe.FinalEvalRefused, match="not locked"):
-            fe.main(["--spec", str(_spec(tmp_path, locked=False)), "--confirm"])
+            fe.main(["--spec", str(_spec(tmp_path, locked=False)), "--bundle", BUNDLE, "--confirm"])
 
     def test_refuses_incomplete_spec(self, tmp_path: Path, no_data: None) -> None:
         p = tmp_path / "s.yaml"
         p.write_text(yaml.safe_dump({"dataset": "FD001", "locked": True}), encoding="utf-8")
         with pytest.raises(fe.FinalEvalRefused, match="lacks"):
-            fe.main(["--spec", str(p), "--confirm"])
+            fe.main(["--spec", str(p), "--bundle", BUNDLE, "--confirm"])
 
     def test_refuses_cap_other_than_params(self, tmp_path: Path, no_data: None) -> None:
         with pytest.raises(fe.FinalEvalRefused, match="rul_cap"):
-            fe.main(["--spec", str(_spec(tmp_path, rul_cap=105)), "--confirm"])
+            fe.main(["--spec", str(_spec(tmp_path, rul_cap=105)), "--bundle", BUNDLE, "--confirm"])
 
     def test_refuses_second_run_for_same_spec(
         self, tmp_path: Path, no_data: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(fe, "_already_evaluated", lambda h: ["run123"])
         with pytest.raises(fe.FinalEvalRefused, match="already scored"):
-            fe.main(["--spec", str(_spec(tmp_path)), "--confirm"])
+            fe.main(["--spec", str(_spec(tmp_path)), "--bundle", BUNDLE, "--confirm"])
 
     def test_spec_hash_is_order_independent(self) -> None:
         a = {"dataset": "FD001", "model": "lstm", "seed": 1, "rul_cap": 125, "locked": True}
@@ -110,35 +112,54 @@ class TestImportBan:
         assert out.stdout.strip() == "False"
 
 
-def test_metrics_out_writes_the_table_as_json(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+SPEC = {"dataset": "FD001", "model": "ridge", "seed": 42, "rul_cap": 125, "locked": True}
+
+
+def _manifest(tmp_path: Path, **over: object) -> Path:
     import json
 
-    import pandas as pd
-
-    table = pd.DataFrame(
-        {
-            "truth": ["uncapped", "capped"],
-            "metric": ["rmse", "rmse"],
-            "estimate": [10.0, 9.0],
-            "ci_lo": [8.0, 7.0],
-            "ci_hi": [12.0, 11.0],
-            "n_engines": [100, 100],
-            "n_points": [100, 100],
-        }
-    )
-    monkeypatch.setenv("MLFLOW_TRACKING_URI", (tmp_path / "mlruns").as_uri())
-    monkeypatch.setattr(fe, "evaluate", lambda spec, raw: (table, {"n_test_engines": 100}))
-    out = tmp_path / "out" / "m.json"
-    fe.main(["--spec", str(_spec(tmp_path)), "--confirm", "--metrics-out", str(out)])
-    doc = json.loads(out.read_text(encoding="utf-8"))
-    assert doc["ran"] is True and doc["n_test_engines"] == 100 and doc["model"] == "ridge"
-    assert doc["uncapped"]["rmse"] == {
-        "estimate": 10.0,
-        "ci_lo": 8.0,
-        "ci_hi": 12.0,
-        "n_engines": 100,
-        "n_points": 100,
+    man = {
+        "dataset": "FD001",
+        "model": "ridge",
+        "seed": 42,
+        "version": "current",
+        "spec_hash": fe.spec_hash(SPEC),
+        "metrics": {"refit": {"n_engines": 100.0}},
     }
-    assert doc["capped"]["rmse"]["estimate"] == 9.0
+    man.update(over)
+    d = tmp_path / "bundle"
+    d.mkdir(exist_ok=True)
+    (d / "manifest.json").write_text(json.dumps(man), encoding="utf-8")
+    return d
+
+
+class TestBundleChecks:
+    def test_accepts_the_bundle_built_from_this_spec(self, tmp_path: Path) -> None:
+        assert fe.check_bundle(SPEC, _manifest(tmp_path))["version"] == "current"
+
+    @pytest.mark.parametrize(
+        ("over", "match"),
+        [
+            ({"dataset": "FD002"}, "dataset"),
+            ({"model": "lstm"}, "model"),
+            ({"seed": 7}, "seed"),
+            ({"spec_hash": "0" * 64}, "not built from this spec"),
+            ({"spec_hash": None}, "not built from this spec"),
+            ({"metrics": {"test": {"critical_rmse": 4.0}}}, "not a train_prod bundle"),
+            ({"metrics": {"refit": {}, "test": {"critical_rmse": 4.0}}}, "not a train_prod bundle"),
+        ],
+    )
+    def test_refuses_any_other_bundle(
+        self, tmp_path: Path, over: dict[str, object], match: str
+    ) -> None:
+        with pytest.raises(fe.FinalEvalRefused, match=match):
+            fe.check_bundle(SPEC, _manifest(tmp_path, **over))
+
+    def test_refuses_a_directory_without_a_manifest(self, tmp_path: Path) -> None:
+        with pytest.raises(fe.FinalEvalRefused, match="not a bundle directory"):
+            fe.check_bundle(SPEC, tmp_path)
+
+    def test_refuses_before_any_data_is_read(self, tmp_path: Path, no_data: None) -> None:
+        bad = _manifest(tmp_path, spec_hash="0" * 64)
+        with pytest.raises(fe.FinalEvalRefused, match="not built from this spec"):
+            fe.main(["--spec", str(_spec(tmp_path)), "--bundle", str(bad), "--confirm"])

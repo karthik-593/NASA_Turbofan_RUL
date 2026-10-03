@@ -105,19 +105,17 @@ stages:
     deps:
       - ${release.spec}
       - data/raw
+      - models/prod
       - reports/train_prod/metrics.json
       - src/turbofan
     params:
       - final_eval.enabled
-      - seed
       - rul_cap
       - sensors
       - n_regimes
       - regime_kmeans
       - window
       - seq_len
-      - models
-      - cv.inner_val_frac
       - bootstrap
     metrics:
       - reports/final_eval/metrics.json:

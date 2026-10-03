@@ -144,6 +144,8 @@ class TestFinalEvalStage:
     ) -> None:
         ctx = _ctx(tmp_path, smoke=False, final_eval_enabled=True)
         ctx.final_metrics.parent.mkdir(parents=True)
+        ctx.train_metrics.parent.mkdir(parents=True)
+        ctx.train_metrics.write_text(json.dumps({"bundle": "models/prod/b"}), encoding="utf-8")
         calls = self._spy(monkeypatch, ctx)
         monkeypatch.delenv(final_eval_stage.CONFIRM_ENV, raising=False)
         if how == "env":
@@ -152,6 +154,7 @@ class TestFinalEvalStage:
         (cmd,) = calls
         assert cmd[2] == "turbofan.evaluation.final_eval" and "--confirm" in cmd
         assert cmd[cmd.index("--spec") + 1] == str(ctx.spec)
+        assert cmd[cmd.index("--bundle") + 1] == str(ctx.root / "models/prod/b")
 
 
 class TestSealedBoundary:
@@ -268,3 +271,77 @@ def test_train_prod_refuses_an_unlocked_spec(
     )
     with pytest.raises(RuntimeError, match="not locked"):
         train_prod.run(ctx)
+
+
+def _write_test_files(raw: Path, n_test: int = 10) -> None:
+    """test_FD001.txt (first ``n_test`` training engines cut short) and its RUL labels."""
+    train = pd.read_csv(raw / "train_FD001.txt", sep=" ", header=None)
+    parts, remaining = [], []
+    for u in range(1, n_test + 1):
+        g = train[train[0] == u]
+        keep = 20 + 3 * u
+        parts.append(g.iloc[:keep])
+        remaining.append(len(g) - keep)
+    pd.concat(parts).to_csv(raw / "test_FD001.txt", sep=" ", header=False, index=False)
+    pd.Series(remaining).to_csv(raw / "RUL_FD001.txt", header=False, index=False)
+
+
+def test_final_eval_scores_the_train_prod_bundle_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import turbofan.evaluation.final_eval as fe
+
+    uri = (tmp_path / "mlruns").as_uri()
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
+    _write_raw(tmp_path / "raw")
+    _write_test_files(tmp_path / "raw")
+    ctx = _ctx(tmp_path, models=["ridge"], smoke=False, max_folds=None, n_engines=None)
+    ctx.cv_metrics.parent.mkdir(parents=True)
+    ctx.cv_metrics.write_text(
+        json.dumps({"dataset": "FD001", "rul_cap": RUL_CAP, "models": {"ridge": {}}}),
+        encoding="utf-8",
+    )
+    _spec(ctx, model="ridge")
+    bundle = train_prod.run(ctx)
+
+    out = tmp_path / "final.json"
+    argv = [
+        "--spec", str(ctx.spec), "--bundle", str(bundle), "--raw", str(ctx.raw),
+        "--confirm", "--metrics-out", str(out),
+    ]  # fmt: skip
+    fe.main(argv)
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert doc["ran"] is True and doc["n_test_engines"] == 10
+    assert doc["uncapped"]["rmse"]["n_engines"] == 10
+    runs = mlflow.MlflowClient(uri).search_runs(
+        [mlflow.MlflowClient(uri).get_experiment_by_name("turbofan-rul").experiment_id],
+        filter_string="tags.run_type = 'final_test'",
+    )
+    assert len(runs) == 1
+    assert runs[0].data.tags["bundle_version"] == "current"
+    assert runs[0].data.tags["spec_hash"] == doc["spec_hash"]
+    with pytest.raises(fe.FinalEvalRefused, match="already scored"):
+        fe.main(argv)
+
+
+def test_final_eval_refuses_a_bundle_built_from_another_spec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import turbofan.evaluation.final_eval as fe
+
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", (tmp_path / "mlruns").as_uri())
+    _write_raw(tmp_path / "raw")
+    _write_test_files(tmp_path / "raw")
+    ctx = _ctx(tmp_path, models=["ridge"], smoke=False, max_folds=None, n_engines=None)
+    ctx.cv_metrics.parent.mkdir(parents=True)
+    ctx.cv_metrics.write_text(
+        json.dumps({"dataset": "FD001", "rul_cap": RUL_CAP, "models": {"ridge": {}}}),
+        encoding="utf-8",
+    )
+    _spec(ctx, model="ridge")
+    bundle = train_prod.run(ctx)
+    other = yaml.safe_load(ctx.spec.read_text(encoding="utf-8")) | {"seed": 7}
+    ctx.spec.write_text(yaml.safe_dump(other), encoding="utf-8")  # re-locked after the refit
+    argv = ["--spec", str(ctx.spec), "--bundle", str(bundle), "--raw", str(ctx.raw), "--confirm"]
+    with pytest.raises(fe.FinalEvalRefused, match="seed"):
+        fe.main(argv)

@@ -41,12 +41,17 @@ def run(ctx: Context, confirm: bool) -> dict[str, Any]:
             f"final_eval.enabled is true but this invocation is not confirmed (pass --confirm or "
             f"set {CONFIRM_ENV}=1); the sealed test set is read only on explicit confirmation"
         )
+    if not ctx.train_metrics.is_file():
+        raise FileNotFoundError(f"{ctx.train_metrics} missing — run the train_prod stage first")
+    bundle = ctx.root / json.loads(ctx.train_metrics.read_text(encoding="utf-8"))["bundle"]
     cmd = [
         sys.executable,
         "-m",
         "turbofan.evaluation.final_eval",
         "--spec",
         str(ctx.spec),
+        "--bundle",
+        str(bundle),
         "--raw",
         str(ctx.raw),
         "--confirm",

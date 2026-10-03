@@ -149,8 +149,10 @@ def save_bundle(
     *,
     seed: int,
     metrics: dict[str, dict[str, float]],
+    extra: dict[str, Any] | None = None,
 ) -> Path:
-    """Write a complete bundle; return its directory."""
+    """Write a complete bundle; return its directory. ``extra`` adds top-level manifest keys
+    (e.g. the locked spec's hash); it may not overwrite a key the bundle sets itself."""
     provenance = git_provenance()
     d = bundle_dir(out_root, dataset, model_name, version)
     d.mkdir(parents=True, exist_ok=True)
@@ -177,6 +179,10 @@ def save_bundle(
         "lib_versions": _lib_versions(),
         "files": {"model": MODEL_FILE, "feature_state": FEATURE_STATE_FILE},
     }
+    clash = sorted(set(extra or {}) & set(manifest))
+    if clash:
+        raise ValueError(f"extra manifest keys clash with the bundle's own: {clash}")
+    manifest.update(extra or {})
     (d / MANIFEST_FILE).write_text(json.dumps(manifest, indent=2))
     return d
 

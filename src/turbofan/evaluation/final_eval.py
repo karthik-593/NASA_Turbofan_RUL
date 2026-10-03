@@ -1,14 +1,15 @@
-"""The one sealed read of the NASA test set per locked candidate (rule 3, D46).
+"""The one sealed read of the NASA test set per locked candidate (rule 3, D46, D48).
 
-    python -m turbofan.evaluation.final_eval --spec locked.yaml --confirm
+    python -m turbofan.evaluation.final_eval --spec locked.yaml --bundle <dir> --confirm
 
 The spec (YAML) names one candidate exactly: ``dataset``, ``model`` (registry name),
 ``seed``, ``rul_cap``, and must say ``locked: true`` — it is the outcome of protocol-v2
-selection on training data, frozen before this runs. The candidate is retrained on all
-training engines (a stratified inner share for early stopping only, as in CV), then scored
-once on ``test_FD00x.txt`` against ``RUL_FD00x.txt``: one prediction per test engine at its
-last observed cycle, metrics with engine-bootstrap CIs. Logged to MLflow with
-``run_type=final_test`` and the spec's hash; a second run for the same spec hash is refused.
+selection on training data, frozen before this runs. What is scored is the **shipped artifact**:
+the ``train_prod`` bundle built from this very spec (its manifest must carry the spec's hash and
+a ``refit`` record, and no test-set metric). The bundle's model and feature state score
+``test_FD00x.txt`` against ``RUL_FD00x.txt`` once: one prediction per test engine at its last
+observed cycle, metrics with engine-bootstrap CIs. Logged to MLflow with ``run_type=final_test``
+and the spec's hash; a second run for the same spec hash is refused.
 
 Refuses to do anything without ``--confirm``. Selection code must never import this module
 (``tests/test_final_eval.py`` enforces it): nothing in model selection may reach the test set.
@@ -24,18 +25,16 @@ from typing import Any
 import mlflow
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
 from turbofan import tracking
-from turbofan.analysis.subpopulation import subpopulation_labels
-from turbofan.config import KEEP, PARAMS
-from turbofan.data.loader import load_dataset, load_train
+from turbofan.config import KEEP
+from turbofan.data.loader import load_dataset
 from turbofan.evaluation.comparison import build_registry
-from turbofan.evaluation.cv import true_rul
 from turbofan.evaluation.cv_metrics import metric_table
-from turbofan.evaluation.fitting import fit_candidate, predict_last_cycle
+from turbofan.evaluation.fitting import predict_last_cycle
 from turbofan.evaluation.spec import FinalEvalRefused, load_spec, spec_hash
 from turbofan.features.engineering import add_features
+from turbofan.training.bundle import MANIFEST_FILE, Bundle, load_bundle_dir
 
 __all__ = ["FinalEvalRefused", "load_spec", "spec_hash", "main"]
 
@@ -52,29 +51,40 @@ def _already_evaluated(h: str) -> list[str]:
     return [r.info.run_id for r in runs]
 
 
-def evaluate(spec: dict[str, Any], raw: str | Path) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Retrain on all training engines and score the test set once. Returns (metric table,
-    run details)."""
-    ds, seed, cap = spec["dataset"], int(spec["seed"]), float(spec["rul_cap"])
-    train = load_train(ds, raw)
-    labels = subpopulation_labels(train, ds)
-    tr_u, va_u = train_test_split(
-        labels.index.to_numpy(),
-        test_size=PARAMS["cv"]["inner_val_frac"],
-        stratify=labels.to_numpy(),
-        random_state=seed,
-    )
-    d = train.copy()
-    d["rul_true"] = true_rul(d)
-    d["rul"] = d["rul_true"].clip(upper=cap)
-    feat_tr, stats = add_features(d[d["unit"].isin(tr_u)], KEEP, ds)
-    feat_va, _ = add_features(d[d["unit"].isin(va_u)], KEEP, ds, stats=stats)
-    cand = build_registry(seed=seed)[spec["model"]]
-    model = fit_candidate(cand.factory(), cand.kind, feat_tr, feat_va)
+def check_bundle(spec: dict[str, Any], bundle: str | Path) -> dict[str, Any]:
+    """Refuse a bundle that is not the shipped artifact of this spec; returns its manifest.
+    Reads the manifest only — no model is loaded and no data is touched."""
+    path = Path(bundle) / MANIFEST_FILE
+    if not path.is_file():
+        raise FinalEvalRefused(f"{bundle}: no {MANIFEST_FILE} — not a bundle directory")
+    man: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    for key in ("dataset", "model", "seed"):
+        if man.get(key) != spec[key]:
+            raise FinalEvalRefused(
+                f"{bundle}: bundle {key} {man.get(key)!r} != spec {key} {spec[key]!r}"
+            )
+    if man.get("spec_hash") != spec_hash(spec):
+        raise FinalEvalRefused(
+            f"{bundle}: bundle was not built from this spec (spec_hash "
+            f"{str(man.get('spec_hash'))[:12]} != {spec_hash(spec)[:12]}) — rerun train_prod"
+        )
+    metrics = man.get("metrics", {})
+    if "refit" not in metrics or "test" in metrics:
+        raise FinalEvalRefused(
+            f"{bundle}: not a train_prod bundle (needs a 'refit' record and no 'test' metrics)"
+        )
+    return man
 
+
+def evaluate(
+    spec: dict[str, Any], raw: str | Path, bundle: Bundle
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Score the bundle on the test set once. Returns (metric table, run details)."""
+    ds, seed, cap = spec["dataset"], int(spec["seed"]), float(spec["rul_cap"])
+    kind = build_registry(seed=seed)[spec["model"]].kind
     _tr, test, rul_test = load_dataset(ds, raw)  # the sealed read
-    feat_te, _ = add_features(test, KEEP, ds, stats=stats)
-    units, pred = predict_last_cycle(model, cand.kind, feat_te)
+    feat_te, _ = add_features(test, KEEP, ds, stats=bundle.stats)
+    units, pred = predict_last_cycle(bundle.model, kind, feat_te)
     points = pd.DataFrame(
         {"unit": units, "rul_true": rul_test.reindex(units).to_numpy(float), "pred": pred}
     )
@@ -109,6 +119,7 @@ def _metrics_doc(
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Score one locked candidate on the NASA test set.")
     ap.add_argument("--spec", required=True, help="locked candidate spec (YAML)")
+    ap.add_argument("--bundle", required=True, help="the train_prod bundle directory to score")
     ap.add_argument("--raw", default="data/raw")
     ap.add_argument("--metrics-out", help="also write the metric table here as JSON (DVC metrics)")
     ap.add_argument(
@@ -127,6 +138,8 @@ def main(argv: list[str] | None = None) -> None:
     previous = _already_evaluated(h)
     if previous:
         raise FinalEvalRefused(f"spec {h[:12]} was already scored on the test set: runs {previous}")
+    manifest = check_bundle(spec, args.bundle)
+    bundle = load_bundle_dir(args.bundle)
 
     with tracking.run(
         dataset=spec["dataset"],
@@ -134,9 +147,9 @@ def main(argv: list[str] | None = None) -> None:
         seed=int(spec["seed"]),
         run_type="final_test",
         extra_params={"rul_cap": spec["rul_cap"]},
-        extra_tags={"spec_hash": h},
+        extra_tags={"spec_hash": h, "bundle_version": str(manifest["version"])},
     ) as active:
-        table, info = evaluate(spec, args.raw)
+        table, info = evaluate(spec, args.raw, bundle)
         assert active is not None
         mlflow.log_dict(spec, "locked_spec.yaml")
         mlflow.log_text(table.to_csv(index=False), "final_test_metrics.csv")
