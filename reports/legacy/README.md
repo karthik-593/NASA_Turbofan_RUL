@@ -2,8 +2,11 @@
 
 Static HTML exports of the three analysis notebooks as they were executed before this repo
 adopted the evidence-and-test-set rules in `CLAUDE.md` / `docs/decisions.md` ("protocol v2").
-The source `.ipynb` files were stripped of outputs on 2026-10-02 (nbstripout pre-commit hook);
-these HTML files are the only remaining record of what they printed and plotted.
+They are the record of the **original** executions (XGBoost on CUDA). The notebooks now live in
+`notebooks/archive/` and were re-executed on 2026-10-03 with outputs committed (D37) — 01 on
+CPU, 02 and 03 with their original device selection (XGBoost on CUDA; the LSTM on CPU, as the
+installed torch is a CPU-only build). Small differences from these originals are expected
+(D43) and are listed in `notebooks/README.md`.
 
 - `01_understanding_the_data.html`
 - `02_modeling.html`
@@ -28,5 +31,7 @@ means re-running the comparison against validation data only, with the test set 
 once by a locked, final `final_eval` step.
 
 What *is* still valid evidence here: numbers computed entirely on train/validation data, before
-any test read — e.g. `01_understanding_the_data.html`'s sensor-variance cutoff and the FD002
-regime silhouette scan (`docs/decisions.md` D02a, D04a).
+any test read — e.g. `01_understanding_the_data.html`'s FD002 regime silhouette scan
+(`docs/decisions.md` D04a). Its sensor-variance cutoff is valid as a measurement, but the
+conclusion drawn from it is partly contradicted: s6 is weakly informative, not constant
+(D02a, `reports/data_audit.md` §E/§G).
