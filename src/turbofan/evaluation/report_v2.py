@@ -387,7 +387,9 @@ def write_report(run: CVRun, raw: str | Path, ctx: dict[str, object], wall: floa
         "",
         repro.render_markdown(ctx),
     ]
-    REPORT.write_text("\n".join(parts) + "\n", encoding="utf-8")
+    # exactly one trailing newline (render_markdown already ends with one; the end-of-file
+    # pre-commit hook rejects a trailing blank line)
+    REPORT.write_text("\n".join(parts).rstrip("\n") + "\n", encoding="utf-8")
     repro.write_context(ctx, REPORT)
     return REPORT
 
