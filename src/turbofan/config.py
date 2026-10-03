@@ -112,6 +112,9 @@ for _key in ("k", "kmeans_n_init", "kmeans_random_state"):
     _get(PARAMS, f"subpopulation.{_key}", int)
 for _key in ("n_folds", "n_repeats", "seed"):
     _get(PARAMS, f"cv.{_key}", int)
+for _key in ("benchmark_view.bin_width", "benchmark_view.points_per_engine", "bootstrap.n_boot"):
+    _get(PARAMS, _key, int)
+_get(PARAMS, "bootstrap.ci_level", float)
 if not 0.0 < _get(PARAMS, "cv.inner_val_frac", float) < 1.0:
     raise ParamsError("params.yaml: cv.inner_val_frac must be in (0, 1)")
 SEEDS: tuple[int, ...] = tuple(_get(PARAMS, "seeds", list))

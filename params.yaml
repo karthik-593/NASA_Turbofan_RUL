@@ -102,8 +102,11 @@ cv:
   group_by: unit
   inner_val_frac: 0.2         # share of each fold's training engines held out for early
                               # stopping (never the fold's held-out engines)
-bootstrap:
-  n_boot: 2000
+benchmark_view:               # D46: truncation points matching the NASA test label histogram
+  bin_width: 10               # cycles per true-RUL bin
+  points_per_engine: 5        # sampled points per held-out engine
+bootstrap:                    # engine-level bootstrap for every CV metric (rule 4)
+  n_boot: 1000
   ci_level: 0.95
 
 # -- serving ----------------------------------------------------------------------------
