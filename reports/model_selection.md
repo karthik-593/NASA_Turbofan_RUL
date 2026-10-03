@@ -145,3 +145,134 @@ Sub-stages:
 
 Stages run sequentially. Each stage is resumable and pushed with a short summary appended here.
 **Work stops after Stage A for review** before Stage B starts.
+
+---
+
+## Stage A — screening results (XGBoost, seed 42, 5 × 3 folds)
+
+Completed 2026-10-04. Full per-dataset tables (every configuration with CI, n and
+per-subpopulation results; every paired comparison with its Wilcoxon p; decision checks; A4) are
+in `reports/selection/stage_A_FD00x.md`, machine-readable in `.json`. Δ = challenger − incumbent
+in deployment-view critical RMSE (cycles); "better" = paired engine-bootstrap 95% CI entirely
+below 0.
+
+### Outcome per dataset
+
+| dataset | A1 cap | A2 window | A3 blocks adopted | Stage-A config | critical RMSE [95% CI] (n engines) | vs original default (cap 125, window 20, base) Δ [95% CI] |
+|---|---|---|---|---|---|---|
+| FD001 | 90 | 45 | health index (pooled) | cap 90, window 45, `hi_pooled` | 3.41 [3.05, 3.76] (100) | −1.79 [−2.25, −1.36] |
+| FD002 | 90 | 45 | health index (consistent) | cap 90, window 45, `hi_consistent` | 3.92 [3.63, 4.21] (260) | −2.01 [−2.42, −1.63] |
+| FD003 | 90 | 45 | health index (consistent) | cap 90, window 45, `hi_consistent` | 3.55 [3.12, 4.08] (100) | −1.44 [−2.11, −0.75] |
+| FD004 | 90 | 30 | health index (consistent) + regime one-hot | cap 90, window 30, `hi_consistent` + `regime_onehot` | 5.98 [5.51, 6.47] (249) | −1.14 [−1.49, −0.82] |
+
+The last column is one direct paired comparison per dataset added for context (not part of the
+pre-registered chain, which tests one factor at a time). Original-default critical RMSE: FD001
+5.19 [4.78, 5.64], FD002 5.93 [5.58, 6.32], FD003 4.99 [4.40, 5.61], FD004 7.12 [6.62, 7.64].
+
+### What each step found
+
+- **A1 cap.** 90 and 105 both beat 125 on every dataset (e.g. FD004 cap 90 −0.54 [−0.70, −0.38],
+  n = 249); 140 is worse than 125 on every dataset. 90 has the lowest estimate everywhere.
+  **Flag for review: 90 is the lowest value of the pre-registered grid, so the optimum may lie
+  below it** — the grid did not test < 90.
+- **A2 window.** 45 adopted on FD001/FD002/FD003 (e.g. FD002 −1.55 [−1.92, −1.16]); on FD004
+  only 30 beats 20 (−0.40 [−0.73, −0.06]); 45 is not different there (−0.21 [−0.77, 0.36]).
+  **Same flag: 45 is the grid's upper edge for three datasets.**
+- **A3 blocks.** The direction-consistent health index beats base on all four datasets (FD001
+  −0.47 [−0.84, −0.18], FD002 −0.23 [−0.38, −0.07], FD003 −0.25 [−0.43, −0.06], FD004
+  −0.19 [−0.34, −0.04]). The pooled index also beats base on FD001 (−0.57 [−0.91, −0.24],
+  the lower estimate, so FD001 carries `hi_pooled`) and FD002, and is not different on FD003 /
+  FD004. Regime one-hot: barely better on FD004 (−0.08 [−0.17, −0.01]), not different on FD002.
+  Extra sensors (`sensors+`): not different on FD001 / FD003; see deviations for FD002 / FD004.
+- **Decision check** (caught % with lead ≥ 20 at matched wasted life): no adopted change is worse
+  at any budget; several are better at the 30-cycle budget (e.g. FD002 window 45 +4.5
+  [1.3, 7.2] pp; FD004 cap 90 +1.7 [0.2, 3.1] pp). Against the original default the Stage-A
+  configs catch more at 30 cycles on FD002 (+9.0 [6.2, 12.0]), FD003 (+4.3 [0.9, 8.2]) and FD004
+  (+5.9 [3.2, 8.7]); FD001 not different (+1.2 [−1.4, 5.2]).
+- **A4 early identifiability** (AUC [95% CI], 3-repeat average):
+
+  | N cycles | FD001 (60/40) | FD002 (183/77) | FD003 (56/44) | FD004 (148/101) |
+  |---|---|---|---|---|
+  | 30 | 0.66 [0.54, 0.77] | 0.52 [0.45, 0.60] | 0.997 [0.989, 1.000] | 0.995 [0.989, 0.999] |
+  | 50 | 0.72 [0.62, 0.81] | 0.59 [0.51, 0.66] | 0.994 [0.983, 1.000] | 0.997 [0.992, 1.000] |
+  | 100 | 0.95 [0.91, 0.99] | 0.95 [0.92, 0.97] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] |
+
+  "Strong" (CI lower bound ≥ 0.80) from 30 cycles on FD003 and FD004 — the two datasets the
+  C-MAPSS readme lists with two fault modes — and only from 100 cycles on FD001 / FD002. An
+  exploratory check (not pre-registered, not MLflow-logged) on FD003 N = 30: with shuffled labels
+  the AUC is 0.55 [0.43, 0.66], so the pipeline does not leak; the real separation comes from
+  early *levels* (first-30-cycle mean z of s17, s3, s2, s11, s4 differ by ≈ 1.4 SD between the
+  groups), not early slopes. Per the pre-registration this is **reported, not forced**: a
+  causal subpopulation-probability feature is a candidate for a later block test on FD003/FD004.
+
+### Deviations and incidents (all recorded, none changes a pre-registered rule)
+
+1. **Resume-key bug (D49).** The resume key omitted the new `features` section, so the first A3
+   runs on FD001 and FD003 silently reloaded their base runs (Δ exactly 0.00). Found from the
+   results, fixed (`39fb46b`, with a test that every params section is classified), invalid runs
+   deleted locally and tagged `invalid=resume_key_missing_features` in MLflow, A3 re-run. A1/A2
+   were unaffected.
+2. **`sensors+` infeasible on FD002 / FD004 (rule 9 — contradicts audit §E).** s10 (FD002
+   regime 1) and s16 (FD002 5 of 6 regimes, FD004 4 of 6) are constant within operating regimes
+   on the training data, so within-regime normalization is undefined; audit §E had classed them
+   informative. The pre-registered block was recorded as infeasible and **not adopted**. The
+   fittable subset ran as an informational deviation, **not eligible for adoption**: FD002 [s6]
+   −0.04 [−0.09, 0.00] (not different); FD004 [s6, s10] +0.49 [0.03, 1.01] (worse).
+3. **A3-combined reduces to one block when both health indices are adopted** (they share the
+   same three columns): the union then holds the index with the lower estimate (FD001 pooled,
+   FD002 consistent), identical to that block's own run.
+4. **Orchestrator restarts.** FD002 / FD004 orchestrators hit a 2-hour process limit and were
+   relaunched; finished configurations were reused, unfinished splits resumed from MLflow. No
+   effect on results.
+
+### Limitations carried forward
+
+- One factor at a time: cap was chosen at window 20 and base features; window at the A1 cap;
+  blocks at both. Interactions (e.g. cap × window) are untested.
+- About 40 paired comparisons across the four datasets without multiplicity correction; the
+  smallest adopted effects (FD004 regime one-hot, CI upper bound −0.01) are the most likely
+  false positives. Stage D (5 seeds) is the confirmation.
+- Single seed (42) throughout.
+- Compute: 41 configuration runs, 9.8 h of summed run time (four datasets in parallel, so each run
+  was slowed by CPU contention), ≈ 4.5 h elapsed including the reruns above.
+
+### Carried into Stage B (pending review)
+
+Per dataset: cap 90 for the LSTM (B1 seq_len, B2 regime one-hot channels on FD002/FD004), and
+the Stage-A XGBoost configs above as the XGBoost candidates for Stage C. **Work stops here for
+review before Stage B.**
+
+## Reproducibility (environment of the Stage A runs)
+
+- Generated: 2026-10-03T19:42:02+00:00
+- Git commit: `b290869bfb3d37e613b9d30adc1597da849ec49d`
+- DVC data hash (`data/raw`): `43f328008844d7fd56733c63103d09ef.dir`
+- Hardware: Intel64 Family 6 Model 183 Stepping 1, GenuineIntel, 28 logical CPUs; GPU NVIDIA GeForce RTX 4060 Laptop GPU (driver 581.86, CUDA driver 13.0, torch built for CUDA 13.0); resolved devices: torch (LSTM) on cuda, XGBoost on cuda; OS Windows-10-10.0.26200-SP0
+- Threads: 20 (torch and all native pools pinned); torch deterministic algorithms: False; CUDA initialized: False
+- Python 3.11.15
+
+| Library | Version |
+|---|---|
+| mlflow | 3.11.1 |
+| numpy | 2.4.4 |
+| pandas | 2.3.3 |
+| scikit-learn | 1.8.0 |
+| scipy | 1.17.1 |
+| threadpoolctl | 3.6.0 |
+| torch | 2.11.0+cu130 |
+| xgboost | 3.2.0 |
+
+| Native thread pool | Implementation | Version | Threads |
+|---|---|---|---|
+| libscipy_openblas-64eda39e79589aedb16f58e5547eb599.dll | openblas (blas) | 0.3.30 | 24 |
+| libscipy_openblas64_-63c857e738469261263c764a36be9436.dll | openblas (blas) | 0.3.31.188.0 | 24 |
+| libiomp5md.dll | openmp (openmp) | None | 20 |
+| libiompstubs5md.dll | openmp (openmp) | None | 1 |
+| vcomp140.dll | openmp (openmp) | None | 28 |
+
+| Stochastic step | Seed |
+|---|---|
+| cv_seed | 0 |
+| model_seed_42 | 42 |
+
+Pipeline constants in effect: `cfg_REGIME_KMEANS_N_INIT=10`, `cfg_REGIME_KMEANS_SEED=0`, `cfg_SEED=42`, `cfg_SEEDS=(42, 7, 123, 2024, 99)` (full `turbofan.config` in the JSON sidecar).
