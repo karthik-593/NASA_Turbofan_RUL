@@ -86,7 +86,79 @@ def write_plot_data(ctx: Context, run: CVRun) -> None:
         wide.reset_index().to_csv(ctx.cv_plots / fname, index=False)
 
 
+def subpop_doc(run: CVRun) -> dict[str, Any]:
+    """Headline per subpopulation (D35), with CI and n, per model."""
+    out: dict[str, Any] = {}
+    for name, res in run.results.items():
+        m = res.metrics
+        rows = m[
+            (m["view"] == "deployment")
+            & (m["truth"] == "uncapped")
+            & (m["metric"] == HEADLINE)
+            & (m["group"] != "all")
+        ]
+        out[name] = {
+            str(r["group"]): {
+                "estimate": float(r["estimate"]),
+                "ci_lo": float(r["ci_lo"]),
+                "ci_hi": float(r["ci_hi"]),
+                "n_engines": int(r["n_engines"]),
+            }
+            for r in rows.to_dict("records")
+        }
+    return out
+
+
+def run_selection(ctx: Context) -> CVRun:
+    """A tagged model-selection run (D51): CV only — no protocol report — writing the run's
+    metrics, its held-out predictions per model and its environment under ``selection/<tag>/``."""
+    import time
+
+    import torch
+
+    from turbofan import repro
+    from turbofan.config import FEATURE_BLOCKS, PARAMS, SEQ_LEN, WINDOW
+    from turbofan.evaluation.run_cv import run_cv
+
+    seeds = {f"model_seed_{s}": s for s in ctx.seeds} | {"cv_seed": PARAMS["cv"]["seed"]}
+    env = repro.environment_context(seeds=seeds, n_threads=torch.get_num_threads())
+    t0 = time.perf_counter()
+    cv_run = run_cv(
+        ctx.dataset,
+        ctx.models,
+        ctx.seeds,
+        ctx.raw,
+        track=True,
+        resume=ctx.resume,
+        n_folds=ctx.n_folds,
+        n_repeats=ctx.n_repeats,
+    )
+    wall = time.perf_counter() - t0
+    doc = metrics_doc(cv_run)
+    doc.update(
+        tag=ctx.tag,
+        window=WINDOW,
+        seq_len=SEQ_LEN,
+        feature_blocks={
+            "extra_sensors": list(FEATURE_BLOCKS.extra_sensors),
+            "health_index": FEATURE_BLOCKS.health_index,
+            "regime_onehot": FEATURE_BLOCKS.regime_onehot,
+        },
+        subpopulations=subpop_doc(cv_run),
+        wall_seconds=wall,
+        feature_seconds=cv_run.feature_seconds,
+        fit_seconds={n: r.fit_seconds for n, r in cv_run.results.items()},
+    )
+    for name, res in cv_run.results.items():
+        res.points.to_parquet(ctx.points(name), index=False)
+    write_json(ctx.env_file, repro.with_device_state(env))
+    write_json(ctx.cv_metrics, doc)  # written last: its presence marks a complete run
+    return cv_run
+
+
 def run(ctx: Context) -> CVRun:
+    if ctx.tag:
+        return run_selection(ctx)
     engines: list[int] | None = None
     if ctx.smoke:
         assert ctx.n_engines is not None

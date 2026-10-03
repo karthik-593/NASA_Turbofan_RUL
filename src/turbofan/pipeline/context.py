@@ -46,6 +46,7 @@ class Context:
     n_engines: int | None
     spec: Path
     final_eval_enabled: bool
+    tag: str | None = None  # a model-selection run (D51): outputs under selection/<tag>/
 
     # -- outputs, relative to ``root`` ----------------------------------------------------
     @property
@@ -68,6 +69,14 @@ class Context:
     def cv_plots(self) -> Path:
         return self.root / "reports" / "cv_select" / "plots"
 
+    def points(self, model: str) -> Path:
+        """A selection run's held-out predictions at every cycle (all folds x seeds)."""
+        return self.root / f"points_{model}.parquet"
+
+    @property
+    def env_file(self) -> Path:
+        return self.root / "env.json"
+
     @property
     def engines_file(self) -> Path:
         return self.root / "engines.json"
@@ -89,7 +98,7 @@ class Context:
         return self.root / "reports" / "register" / "registered.json"
 
 
-def build_context(smoke: bool) -> Context:
+def build_context(smoke: bool, tag: str | None = None) -> Context:
     unknown = [
         m for m in _req("pipeline", "models") if m not in ("mean", "ridge", "rf", "xgboost", "lstm")
     ]
@@ -104,7 +113,9 @@ def build_context(smoke: bool) -> Context:
     enabled = _req("final_eval", "enabled")
     if not isinstance(enabled, bool):
         raise ValueError(f"params.yaml: final_eval.enabled must be true/false, got {enabled!r}")
-    root = SMOKE_DIR if smoke else REPO
+    if smoke and tag:
+        raise ValueError("a run is either a smoke run or a selection run, not both")
+    root = SMOKE_DIR if smoke else (REPO / "selection" / tag if tag else REPO)
     return Context(
         smoke=smoke,
         root=root,
@@ -119,6 +130,7 @@ def build_context(smoke: bool) -> Context:
         n_engines=int(_req("smoke", "n_engines")) if smoke else None,
         spec=(root / "locked.yaml") if smoke else REPO / str(_req("release", "spec")),
         final_eval_enabled=enabled,
+        tag=tag,
     )
 
 

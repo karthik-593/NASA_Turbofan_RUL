@@ -148,6 +148,18 @@ final_eval:
                               # (once per locked spec; the stage still passes --confirm)
   expectations: configs/data_expectations.json   # row / unit counts the test files must match
                               # (structure only) before anything is scored
+selection:                    # D51, pre-registered in reports/model_selection.md §0
+  seed: 42                    # Stage A/B screening seed
+  window_grid: [20, 30, 45]   # A2 (incumbent: window); A1 uses rul_cap_grid, B1 seq_len_grid
+  extra_sensors:              # A3 sensors+: audit §E "informative, not in sensors.use"
+    FD001: [s6]
+    FD002: [s6, s10, s16]
+    FD003: [s6, s10]
+    FD004: [s6, s10, s16]
+  identifiability:            # A4
+    n_cycles: [30, 50, 100]
+    logreg_c: 1.0
+    auc_strong_lower: 0.80    # "strong" = AUC 95% CI lower bound >= this
 smoke:                        # `python -m turbofan.pipeline all --smoke`: isolated, minutes
   n_engines: 10               # training engines kept (balanced over subpopulations)
   max_folds: 1                # splits run (of overrides.cv.n_folds x n_repeats)

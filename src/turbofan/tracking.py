@@ -80,6 +80,7 @@ RunType = Literal["cv", "legacy_test_selection", "final_test", "train_prod", "re
 
 DEFAULT_TRACKING_URI = "http://localhost:5000"
 DEFAULT_EXPERIMENT_NAME = "turbofan-rul"
+SELECTION_TAG_ENV = "TURBOFAN_SELECTION_TAG"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _TRACKED_LIBS = ("mlflow", "torch", "xgboost", "scikit-learn", "numpy", "pandas")
 
@@ -239,6 +240,10 @@ def run(
         tags.update({f"lib.{lib}": ver or "not installed" for lib, ver in _lib_versions().items()})
         # the device each model family resolved to and the GPU behind it — logged, not forced
         tags.update({f"device.{k}": str(v) for k, v in resolved_devices().items()})
+        # a model-selection run (python -m turbofan.pipeline cv_select --tag ...) names itself
+        selection_tag = os.environ.get(SELECTION_TAG_ENV)
+        if selection_tag:
+            tags["selection_tag"] = selection_tag
         if extra_tags:
             tags.update(extra_tags)
         mlflow.set_tags(tags)

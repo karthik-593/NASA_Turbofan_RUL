@@ -77,3 +77,6 @@ logs/
 
 # DVC smoke-run outputs (python -m turbofan.pipeline all --smoke)
 smoke/
+
+# model-selection runs (python -m turbofan.pipeline cv_select --tag ...): reproducible from MLflow
+selection/

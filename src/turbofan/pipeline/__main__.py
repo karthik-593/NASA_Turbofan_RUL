@@ -5,6 +5,12 @@
 file-based MLflow store). It never reads the test set and never touches the repo's reports,
 models or MLflow server. The smoke environment is set up before ``turbofan.config`` is first
 imported — every module-level default then picks up the smoke values.
+
+``--tag T --set key=value ...`` (``cv_select`` only) is a model-selection run (D51): the
+``--set`` overrides (dotted keys, YAML values) are merged over ``params.yaml`` into
+``selection/T/params.yaml`` the same way, before ``turbofan.config`` is imported, and the run's
+outputs go to ``selection/T/``. Its MLflow runs carry ``selection_tag=T``; resume (D49) keys on
+the merged parameters, so an interrupted or repeated configuration is reloaded, not refitted.
 """
 
 from __future__ import annotations
@@ -23,6 +29,8 @@ STAGES = ("validate", "cv_select", "train_prod", "final_eval", "register")
 REPO = Path(__file__).resolve().parents[3]
 SMOKE_DIR = REPO / "smoke"
 SMOKE_EXPERIMENT = "turbofan-rul-smoke"
+SELECTION_DIR = REPO / "selection"
+SELECTION_STAGES = ("cv_select",)
 
 
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
@@ -56,6 +64,52 @@ def prepare_smoke(keep: bool) -> Path:
     return path
 
 
+def parse_sets(sets: list[str]) -> dict[str, Any]:
+    """``["a.b=1", "c=[x, y]"]`` -> nested override mapping (values parsed as YAML)."""
+    out: dict[str, Any] = {}
+    for item in sets:
+        key, sep, raw = item.partition("=")
+        if not sep or not key:
+            raise ValueError(f"--set expects key=value, got {item!r}")
+        node = out
+        parts = key.split(".")
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+        node[parts[-1]] = yaml.safe_load(raw)
+    return out
+
+
+def prepare_selection(tag: str, sets: list[str]) -> Path:
+    """Write ``selection/<tag>/params.yaml`` (params.yaml + overrides) and point the process at
+    it. Call before importing ``turbofan.config``."""
+    if "turbofan.config" in sys.modules:
+        raise RuntimeError("prepare_selection() must run before turbofan.config is imported")
+    if not tag or tag.startswith(("/", "\\")) or ".." in Path(tag).parts:
+        raise ValueError(f"--tag must be a relative name, got {tag!r}")
+    src = REPO / "params.yaml"
+    doc = yaml.safe_load(src.read_text(encoding="utf-8"))
+    over = parse_sets(sets)
+
+    def check(base: dict[str, Any], o: dict[str, Any], prefix: str) -> None:
+        for k, v in o.items():
+            if k not in base:
+                raise KeyError(f"--set {prefix}{k}: no such key in {src}")
+            if isinstance(v, dict):
+                if not isinstance(base[k], dict):
+                    raise KeyError(f"--set {prefix}{k}: not a mapping in {src}")
+                check(base[k], v, f"{prefix}{k}.")
+
+    check(doc, over, "")
+    out = SELECTION_DIR / tag
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "params.yaml"
+    path.write_text(yaml.safe_dump(_merge(doc, over), sort_keys=False), encoding="utf-8")
+    (out / "overrides.yaml").write_text(yaml.safe_dump(over, sort_keys=True), encoding="utf-8")
+    os.environ["TURBOFAN_PARAMS"] = str(path)
+    os.environ["TURBOFAN_SELECTION_TAG"] = tag
+    return path
+
+
 def write_smoke_spec(ctx: Any) -> None:
     """The smoke run's 'locked' spec: a stand-in so train_prod and register have a candidate to
     refit. It locks nothing real and lives only under smoke/."""
@@ -83,16 +137,31 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="final_eval stage: allow the sealed test read when final_eval.enabled is true",
     )
+    ap.add_argument("--tag", help="model-selection run name: outputs go to selection/<tag>/")
+    ap.add_argument(
+        "--set",
+        dest="sets",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="with --tag: override a params.yaml key for this run (repeatable)",
+    )
     args = ap.parse_args(argv)
     if args.keep and not args.smoke:
         ap.error("--keep only applies to --smoke")
+    if args.sets and not args.tag:
+        ap.error("--set needs --tag (a selection run keeps its own params file)")
+    if args.tag and (args.smoke or args.stage not in SELECTION_STAGES):
+        ap.error(f"--tag applies to {SELECTION_STAGES} without --smoke")
     if args.smoke:
         prepare_smoke(args.keep)
+    if args.tag:
+        prepare_selection(args.tag, args.sets)
 
     from turbofan.pipeline import cv_select, final_eval_stage, register, train_prod, validate
     from turbofan.pipeline.context import build_context
 
-    ctx = build_context(args.smoke)
+    ctx = build_context(args.smoke, tag=args.tag)
     if ctx.smoke and not ctx.spec.exists():
         write_smoke_spec(ctx)
     runners: dict[str, Callable[[], object]] = {
