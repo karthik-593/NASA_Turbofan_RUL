@@ -27,11 +27,12 @@ from turbofan.config import (
     REGIME_KMEANS_SEED,
     WINDOW,
 )
+from turbofan.features.envelope import fit_envelope
 
 __all__ = ["add_features", "assign_regimes", "FEATURE_STATE_KEYS"]
 
 # Keys a fitted feature state must carry; a state without them predates params.yaml.
-FEATURE_STATE_KEYS = ("n_regimes", "sensors", "op_sc", "km", "s_mean", "s_std")
+FEATURE_STATE_KEYS = ("n_regimes", "sensors", "op_sc", "km", "s_mean", "s_std", "envelope")
 
 # A sample std needs two rows; a regime with fewer cannot be normalized (D06, rule 8).
 _MIN_REGIME_ROWS = 2
@@ -104,7 +105,7 @@ def _check_state(stats: dict[str, Any], sensors: list[str]) -> None:
     if missing:
         raise ValueError(
             f"feature state lacks {missing}: it predates the params.yaml regime model "
-            "(bundle_schema < 3) — retrain the bundle"
+            "(bundle_schema < 5) — retrain the bundle"
         )
     if list(stats["sensors"]) != list(sensors):
         raise ValueError(
@@ -134,6 +135,7 @@ def add_features(
         stats = {"n_regimes": k, "sensors": list(sensors), "op_sc": op_sc, "km": km}
         labels = assign_regimes(d, stats)
         stats["s_mean"], stats["s_std"] = _fit_norm(d, labels, sensors, k)
+        stats["envelope"] = fit_envelope(d, labels, stats, sensors)
     else:
         _check_state(stats, sensors)
         labels = assign_regimes(d, stats)

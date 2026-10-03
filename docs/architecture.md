@@ -9,10 +9,12 @@ src/turbofan/
 │                            SPLIT_FRAC, SENSORS/KEEP (14), N_REGIMES, FEAT_COLS (42),
 │                            model hyperparameters, maintenance buckets
 ├── data/
-│   └── loader.py            raw C-MAPSS .txt → CMAPSSDataset (train/test/rul_series)
+│   ├── loader.py            raw C-MAPSS .txt → CMAPSSDataset (train/test/rul_series)
+│   └── schema.py            pandera schemas the loader enforces (columns, dtypes, no NaN)
 ├── features/
-│   └── engineering.py       add_features(): per-regime normalization (k = n_regimes; k=1 = global),
+│   ├── engineering.py       add_features(): per-regime normalization (k = n_regimes; k=1 = global),
 │                            rolling mean/slope → the feature set every model trains on
+│   └── envelope.py          training operating envelope; /predict rejects inputs outside it
 ├── models/
 │   ├── baselines.py          MeanBaseline, RidgeRUL, RandomForestRUL
 │   ├── xgboost_model.py       XGBoostRUL

@@ -98,6 +98,9 @@ bootstrap:
   ci_level: 0.95
 
 # -- serving ----------------------------------------------------------------------------
+validation:
+  envelope_margin: 0.25       # D41: fraction of the training range (sensors) / regime radius
+                              # (op settings) tolerated beyond it at serving
 serving:
   min_history: 10             # ASSUMPTION (D39): fewest cycles /predict accepts; shorter
                               # histories than seq_len are padded + masked (D11)

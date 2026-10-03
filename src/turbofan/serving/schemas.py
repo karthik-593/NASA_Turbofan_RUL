@@ -14,6 +14,8 @@ from turbofan.config import KEEP
 class CycleReading(BaseModel):
     """One operating cycle: the three op settings plus the KEEP sensor channels."""
 
+    model_config = ConfigDict(allow_inf_nan=False)  # NaN/inf -> 422, never reaches features
+
     op1: float
     op2: float
     op3: float

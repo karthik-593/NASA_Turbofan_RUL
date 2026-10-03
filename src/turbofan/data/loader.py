@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from turbofan.config import RUL_CAP
+from turbofan.data.schema import validate_raw, validate_rul
 
 # The 26 raw columns in every C-MAPSS text file (space-separated, no header).
 _COLUMN_NAMES: list[str] = [
@@ -171,12 +172,15 @@ def load_cmapss(
                 )
 
         train_df = _read_txt(train_path)
+        validate_raw(train_df, str(train_path))
         train_df = _compute_train_rul(train_df, rul_cap)
 
         test_df = _read_txt(test_path)
+        validate_raw(test_df, str(test_path))
 
         # RUL file has one value per test unit, no header.
         rul_series: pd.Series[int] = pd.read_csv(rul_path, header=None, names=["rul"])["rul"]
+        validate_rul(rul_series, int(test_df["unit_id"].nunique()), str(rul_path))
         # Use 1-based unit index to match unit_id in the test DataFrame.
         rul_series.index = np.arange(1, len(rul_series) + 1)
 

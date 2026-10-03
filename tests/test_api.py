@@ -188,3 +188,22 @@ def test_rul_at_cap_flag(trained_bundle_dir: str, value: float, at_cap: bool) ->
     cycles = [CycleReading(**c) for c in _cycles(SEQ_LEN)]
     out = predict_rul(cycles, b)
     assert out["rul_at_cap"] is at_cap
+
+
+def test_predict_out_of_envelope_returns_422_with_reason(client):
+    cycles = _cycles(SEQ_LEN)
+    cycles[-1]["sensors"]["s11"] = 1000.0
+    r = client.post("/predict", json={"cycles": cycles})
+    assert r.status_code == 422
+    reasons = r.json()["detail"]["reasons"]
+    assert any(f"cycle {SEQ_LEN}: s11 = 1000" in x for x in reasons)
+
+
+def test_predict_nan_sensor_returns_422(client):
+    import json
+
+    cycles = _cycles(SEQ_LEN)
+    cycles[0]["sensors"]["s2"] = float("nan")
+    body = json.dumps({"cycles": cycles})  # serializes NaN as the bare literal NaN
+    r = client.post("/predict", content=body, headers={"content-type": "application/json"})
+    assert r.status_code == 422

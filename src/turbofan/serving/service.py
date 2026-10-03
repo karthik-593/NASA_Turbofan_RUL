@@ -19,8 +19,9 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from turbofan.config import MIN_HISTORY, maintenance_bucket, sensor_n_cols
+from turbofan.config import ENVELOPE_MARGIN, MIN_HISTORY, maintenance_bucket, sensor_n_cols
 from turbofan.features.engineering import add_features
+from turbofan.features.envelope import check_envelope
 from turbofan.models.lstm_model import make_last_windows
 from turbofan.serving.schemas import CycleReading
 from turbofan.training.bundle import Bundle
@@ -30,6 +31,14 @@ PENDING_BASIS = "pending calibrated intervals"
 
 class ShortHistory(ValueError):
     """Raised when fewer than ``serving.min_history`` cycles are supplied."""
+
+
+class OutOfEnvelope(ValueError):
+    """Raised when request cycles fall outside the training operating envelope (D41)."""
+
+    def __init__(self, reasons: list[str]) -> None:
+        super().__init__("; ".join(reasons))
+        self.reasons = reasons
 
 
 def to_frame(cycles: Sequence[CycleReading], unit: int = 1) -> pd.DataFrame:
@@ -48,8 +57,12 @@ def serving_window(cycles: Sequence[CycleReading], bundle: Bundle) -> npt.NDArra
         raise ShortHistory(f"need at least {MIN_HISTORY} cycles of history, got {len(cycles)}")
     cfg = bundle.manifest["config"]
     sensors = list(cfg["keep"])
+    raw = to_frame(cycles)
+    reasons = check_envelope(raw, bundle.stats, ENVELOPE_MARGIN)
+    if reasons:
+        raise OutOfEnvelope(reasons)
     feat, _ = add_features(
-        to_frame(cycles), sensors, bundle.manifest["dataset"], cfg["window"], stats=bundle.stats
+        raw, sensors, bundle.manifest["dataset"], cfg["window"], stats=bundle.stats
     )
     X_w, _units = make_last_windows(feat, sensor_n_cols(sensors), cfg["seq_len"])
     return X_w

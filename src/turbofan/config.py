@@ -98,6 +98,11 @@ REGIME_KMEANS_N_INIT: int = _get(PARAMS, "regime_kmeans.n_init", int)
 REGIME_KMEANS_SEED: int = _get(PARAMS, "regime_kmeans.random_state", int)
 
 CAP_TEST_TRUTH: bool = _get(PARAMS, "eval.cap_test_truth", bool)
+ENVELOPE_MARGIN: float = float(_get(PARAMS, "validation.envelope_margin", (int, float)))
+if ENVELOPE_MARGIN < 0:
+    raise ParamsError(
+        f"params.yaml: validation.envelope_margin must be >= 0, got {ENVELOPE_MARGIN}"
+    )
 MIN_HISTORY: int = _get(PARAMS, "serving.min_history", int)
 if not 1 <= MIN_HISTORY <= SEQ_LEN:
     raise ParamsError(f"params.yaml: serving.min_history must be in 1..seq_len, got {MIN_HISTORY}")
