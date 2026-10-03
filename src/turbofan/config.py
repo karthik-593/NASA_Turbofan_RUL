@@ -115,6 +115,9 @@ for _key in ("n_folds", "n_repeats", "seed"):
 for _key in ("benchmark_view.bin_width", "benchmark_view.points_per_engine", "bootstrap.n_boot"):
     _get(PARAMS, _key, int)
 _get(PARAMS, "bootstrap.ci_level", float)
+for _key in ("t_min", "t_max", "t_step"):
+    _get(PARAMS, f"decision_curve.{_key}", int)
+_get(PARAMS, "decision_curve.lead_times", list)
 if not 0.0 < _get(PARAMS, "cv.inner_val_frac", float) < 1.0:
     raise ParamsError("params.yaml: cv.inner_val_frac must be in (0, 1)")
 SEEDS: tuple[int, ...] = tuple(_get(PARAMS, "seeds", list))

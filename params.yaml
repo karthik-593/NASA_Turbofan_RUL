@@ -105,6 +105,11 @@ cv:
 benchmark_view:               # D46: truncation points matching the NASA test label histogram
   bin_width: 10               # cycles per true-RUL bin
   points_per_engine: 5        # sampled points per held-out engine
+decision_curve:               # D46: rule "remove when predicted RUL <= T"; ASSUMPTION grid
+  t_min: 0
+  t_max: 125
+  t_step: 5
+  lead_times: [10, 20, 30]    # ASSUMPTION: lead times (cycles) a removal must leave to count
 bootstrap:                    # engine-level bootstrap for every CV metric (rule 4)
   n_boot: 1000
   ci_level: 0.95
