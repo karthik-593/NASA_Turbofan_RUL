@@ -1207,7 +1207,7 @@ Statuses in `docs/decisions.md` are unchanged; this table is input for review.
 | D31 | Asymmetric loss | inconclusive (out of scope) | Model choice. |
 | D32 | DVC local remote | inconclusive (out of scope) | Infrastructure. |
 | D33 | MLflow sqlite backend | inconclusive (out of scope) | Infrastructure. |
-| D34 | Report computations reproduce exactly | supported | Rerun check below: identical report and environment. | <!-- volatile -->
+| D34 | Report computations reproduce exactly | contradicted | Rerun check below: 2 differing line(s), env ['git_commit', 'git_dirty', 'config']. | <!-- volatile -->
 
 ### Contradictions register
 
@@ -1233,12 +1233,12 @@ Statuses in `docs/decisions.md` are unchanged; this table is input for review.
 
 ## Rerun check (D34)
 
-Reproduced: this run (fresh process) matches the previous run of 2026-10-02T19:11:39+00:00 on every non-volatile line of this report — all numbers and all figure SHA-256s — and `repro.mismatches()` on the environment sidecar is empty. <!-- volatile -->
+NOT reproduced: 2 non-volatile line(s) differ from the run of 2026-10-02T19:17:52+00:00; environment mismatches: ['git_commit', 'git_dirty', 'config']. <!-- volatile -->
 
 ## Reproducibility
 
-- Generated: 2026-10-02T19:17:52+00:00
-- Git commit: `0acb61b64ce890588fcaf7698cc803b4032d88d3` (**dirty working tree — not reproducible from the commit alone**)
+- Generated: 2026-10-03T07:30:33+00:00
+- Git commit: `d1aab893d3fa03c051bb1863944aad790115a6ad`
 - DVC data hash (`data/raw`): `43f328008844d7fd56733c63103d09ef.dir`
 - Hardware: CPU only — Intel64 Family 6 Model 183 Stepping 1, GenuineIntel, 28 logical CPUs; OS Windows-10-10.0.26200-SP0
 - Threads: 1 (torch and all native pools pinned); torch deterministic algorithms: True; CUDA initialized: False
@@ -1279,4 +1279,4 @@ Reproduced: this run (fresh process) matches the previous run of 2026-10-02T19:1
 | d05_stability_kmeans_random_state_8 | 8 |
 | d05_stability_kmeans_random_state_9 | 9 |
 
-Pipeline constants in effect: `cfg_REGIME_KMEANS_N_INIT=10`, `cfg_REGIME_KMEANS_SEED=0`, `cfg_SEED=42` (full `turbofan.config` in the JSON sidecar).
+Pipeline constants in effect: `cfg_REGIME_KMEANS_N_INIT=10`, `cfg_REGIME_KMEANS_SEED=0`, `cfg_SEED=42`, `cfg_SEEDS=(42, 7, 123, 2024, 99)` (full `turbofan.config` in the JSON sidecar).
