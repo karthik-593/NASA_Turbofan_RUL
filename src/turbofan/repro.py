@@ -41,6 +41,7 @@ import sklearn.cluster  # noqa: F401
 import torch
 from threadpoolctl import threadpool_info, threadpool_limits
 
+from turbofan.devices import resolved_devices
 from turbofan.tracking import _config_params, _dvc_data_hash
 from turbofan.training.bundle import git_provenance
 
@@ -176,6 +177,8 @@ def environment_context(*, seeds: Mapping[str, int], n_threads: int) -> dict[str
         "thread_pools": _thread_pools(),
         "torch_deterministic": torch.are_deterministic_algorithms_enabled(),
         "torch_cuda_initialized": _cuda_initialized(),
+        # informational, not in _MUST_MATCH: which devices model code would resolve to (D43)
+        "devices": resolved_devices(),
         "config": _config_params(),
         "seeds": dict(seeds),
     }

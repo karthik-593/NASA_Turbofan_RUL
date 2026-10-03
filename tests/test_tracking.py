@@ -183,6 +183,9 @@ class TestRun:
         assert r.data.tags["git_dirty"] in ("True", "False")
         assert r.data.tags["dvc_data_hash"]
         assert r.data.tags["lib.mlflow"]
+        assert r.data.tags["device.torch"] in ("cpu", "cuda")
+        assert r.data.tags["device.xgboost"] in ("cpu", "cuda")
+        assert "device.gpu_name" in r.data.tags
         assert r.data.params["dataset"] == "FD001"
         assert r.data.params["model"] == "xgboost"
         assert r.data.params["seed"] == "7"

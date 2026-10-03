@@ -60,6 +60,7 @@ from mlflow.pyfunc import log_model as _pyfunc_log_model
 from mlflow.pyfunc.model import PythonModel, PythonModelContext
 
 from turbofan import config as cfg
+from turbofan.devices import resolved_devices
 from turbofan.serving.schemas import CycleReading
 from turbofan.serving.service import predict_rul
 from turbofan.training.bundle import Bundle, git_provenance, load_bundle_dir
@@ -233,6 +234,8 @@ def run(
             "dvc_data_hash": dvc_hash,
         }
         tags.update({f"lib.{lib}": ver or "not installed" for lib, ver in _lib_versions().items()})
+        # the device each model family resolved to and the GPU behind it — logged, not forced
+        tags.update({f"device.{k}": str(v) for k, v in resolved_devices().items()})
         if extra_tags:
             tags.update(extra_tags)
         mlflow.set_tags(tags)
