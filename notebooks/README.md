@@ -9,8 +9,8 @@
 
 Archived notebooks reflect the pipeline at tag `v0.1-pre-audit`. They used the NASA test set
 for model selection (D25) and validation instances later shown unrepresentative (D17), so
-their numbers are not valid evidence for any decision. The original executions are preserved
-as HTML in [`reports/legacy/`](../reports/legacy/).
+their numbers are not valid evidence for any decision. The HTML exports of the original
+executions are in git history ([`reports/legacy/`](../reports/legacy/) says where).
 
 Re-executed 2026-10-03 with their original device selection (D43). Compared with the
 originally logged numbers: 02 (every metric in its decision log and test table) and 03 (the

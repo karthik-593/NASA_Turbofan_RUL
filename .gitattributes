@@ -1,0 +1,3 @@
+# Keep generated artifacts out of GitHub language statistics.
+reports/** linguist-generated
+*.ipynb linguist-documentation
