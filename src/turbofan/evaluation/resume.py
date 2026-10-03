@@ -40,9 +40,10 @@ __all__ = [
     "log_split",
 ]
 
-# params.yaml sections that change the predictions of a fit. Evaluation-side sections (buckets,
-# decision_curve, bootstrap, benchmark_view, serving, validation) are applied after the fit to
-# the stored predictions and so are not part of the key.
+# Every top-level params.yaml section is classified as one or the other; a test fails on an
+# unclassified one, so a new fit-affecting section cannot silently stay out of the key (as
+# ``features`` did at first — D49, found 2026-10-03 in Stage A).
+# Sections that change the predictions of a fit:
 FIT_SECTIONS = (
     "seed",
     "sensors",
@@ -52,6 +53,29 @@ FIT_SECTIONS = (
     "seq_len",
     "subpopulation",
     "cv",
+    "features",
+)
+# Sections that do not: evaluation-side (applied to stored predictions), selection, serving,
+# pipeline plumbing, or passed explicitly (rul_cap, models.<name>, the engine subset).
+NOT_FIT_SECTIONS = (
+    "rul_cap",
+    "rul_cap_grid",
+    "split_frac",
+    "seq_len_grid",
+    "models",
+    "eval",
+    "buckets",
+    "seeds",
+    "benchmark_view",
+    "decision_curve",
+    "bootstrap",
+    "validation",
+    "serving",
+    "pipeline",
+    "release",
+    "final_eval",
+    "selection",
+    "smoke",
 )
 PREDICTIONS_FILE = "predictions.parquet"
 META_FILE = "split_meta.json"

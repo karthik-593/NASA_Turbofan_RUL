@@ -49,6 +49,14 @@ def test_config_hash_follows_fit_params_and_model_params(monkeypatch: pytest.Mon
     monkeypatch.setitem(rs.PARAMS["models"]["ridge"], "alpha", 9.0)
     assert rs.config_hash(**BASE) != h  # type: ignore[arg-type]
     monkeypatch.undo()
+    for key, value in (
+        ("health_index", "pooled"),
+        ("regime_onehot", True),
+        ("extra_sensors", ["s6"]),
+    ):
+        monkeypatch.setitem(rs.PARAMS["features"], key, value)
+        assert rs.config_hash(**BASE) != h, key  # type: ignore[arg-type]
+        monkeypatch.undo()
     # an evaluation-side section does not invalidate a fit
     monkeypatch.setitem(rs.PARAMS["bootstrap"], "n_boot", 7)
     assert rs.config_hash(**BASE) == h  # type: ignore[arg-type]
@@ -65,3 +73,10 @@ def test_fingerprint_is_the_tree_when_clean_and_adds_a_digest_when_dirty(
     assert dirty.startswith("treehash+") and dirty != "treehash"
     replies["diff"] = "other patch"
     assert rs.src_fingerprint() != dirty
+
+
+def test_every_params_section_is_classified_for_the_resume_key() -> None:
+    sections = set(rs.PARAMS)
+    fit, not_fit = set(rs.FIT_SECTIONS), set(rs.NOT_FIT_SECTIONS)
+    assert not fit & not_fit
+    assert sections - fit - not_fit == set(), "classify new params.yaml sections in resume.py"
