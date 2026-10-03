@@ -1224,21 +1224,21 @@ Statuses in `docs/decisions.md` are unchanged; this table is input for review.
 
 | file | sha256 |
 |---|---|
-| reports/figures/data_audit/A_lengths.png | f4fe49c402237f94bcfacbc2640470138883be3608cb86ce17105da00024be44 |
-| reports/figures/data_audit/B_test_rul.png | c64831b731793f0e2fc8236d354a83fb50e300571f2d1718a8e4b32ea78c8bfd |
-| reports/figures/data_audit/C_val_vs_test_ecdf.png | bbda0dff305c1a7da3b7df8f116bbe85230cb6d9c6d8358c467543f4941ebe36 |
-| reports/figures/data_audit/D_silhouette.png | e465619d2b342a6d0edd6aed09b71b7844a298b5723c9e5ca726f5f1b750b1a0 |
-| reports/figures/data_audit/E_spearman_heatmap.png | e0275af8fad94e4eb6b89ac4eb1e405cfb2aca278225d906489eeb766fb4e24f |
-| reports/figures/data_audit/F_changepoint.png | fd55387c4e5796cd8198ee2399c28c843b7fabcdaf894598e2150775af4026ce |
+| reports/figures/data_audit/A_lengths.png | 7519529a860cf4a9df5e4280ddba49e62c9cc0ccc5e2e30eb641a81094be1c6f |
+| reports/figures/data_audit/B_test_rul.png | 923725fef335f767b7a977c4a64d1c09d1e2aa188d5cbde4a23f1fac2a4586cf |
+| reports/figures/data_audit/C_val_vs_test_ecdf.png | 9a786e0e3c6f99cecd4b45c591f782df58c1550de991cd466a9abac0dd87f379 |
+| reports/figures/data_audit/D_silhouette.png | 8e0415e489e4b0015f9f28fa74575e517f6dfe913f50f3dc751d82c5ece3aec9 |
+| reports/figures/data_audit/E_spearman_heatmap.png | 9c53ab67addef1af00c21ee8bd3a2a0fc3c4a9b4e75473e08d38f19d04618757 |
+| reports/figures/data_audit/F_changepoint.png | 9a07cc353eb71a7de36bc049de89cd60f779625353a48e9b43fb33c8106efe6b |
 
 ## Rerun check (D34)
 
-Reproduced: this run (fresh process) matches the previous run of 2026-10-02T17:46:31+00:00 on every non-volatile line of this report — all numbers and all figure SHA-256s — and `repro.mismatches()` on the environment sidecar is empty. <!-- volatile -->
+Reproduced: this run (fresh process) matches the previous run of 2026-10-02T19:11:39+00:00 on every non-volatile line of this report — all numbers and all figure SHA-256s — and `repro.mismatches()` on the environment sidecar is empty. <!-- volatile -->
 
 ## Reproducibility
 
-- Generated: 2026-10-02T17:51:14+00:00
-- Git commit: `d505810abecb0af5c6d117ca75e4c2886d698924` (**dirty working tree — not reproducible from the commit alone**)
+- Generated: 2026-10-02T19:17:52+00:00
+- Git commit: `0acb61b64ce890588fcaf7698cc803b4032d88d3` (**dirty working tree — not reproducible from the commit alone**)
 - DVC data hash (`data/raw`): `43f328008844d7fd56733c63103d09ef.dir`
 - Hardware: CPU only — Intel64 Family 6 Model 183 Stepping 1, GenuineIntel, 28 logical CPUs; OS Windows-10-10.0.26200-SP0
 - Threads: 1 (torch and all native pools pinned); torch deterministic algorithms: True; CUDA initialized: False
