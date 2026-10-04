@@ -1,0 +1,507 @@
+{
+  "dataset": "FD003",
+  "winners": {
+    "A2-ext": "xgboost, cap 90, window 45",
+    "A5a": "xgboost, cap 90, window 45, hi_consistent",
+    "A5b": "xgboost, cap 90, window 45, hi_consistent",
+    "stage_X": "xgboost, cap 90, window 45, hi_consistent"
+  },
+  "specs": {
+    "xgboost": {
+      "dataset": "FD003",
+      "model": "xgboost",
+      "rul_cap": 90,
+      "window": 45,
+      "seq_len": 30,
+      "blocks": [
+        "hi_consistent"
+      ],
+      "tuned": [],
+      "seeds": [
+        42
+      ],
+      "n_repeats": null,
+      "n_boot": null
+    }
+  },
+  "comparisons": [
+    {
+      "substage": "A2-ext",
+      "challenger": "xgboost, cap 90, window 60",
+      "incumbent": "xgboost, cap 90, window 45",
+      "challenger_tag": "runs/FD003/xgboost/cap090_w060",
+      "incumbent_tag": "runs/FD003/xgboost/cap090_w045",
+      "metric": "critical_rmse",
+      "estimate_challenger": 3.6544724564457676,
+      "estimate_incumbent": 3.805482007741755,
+      "diff": -0.15100955129598725,
+      "diff_ci_lo": -0.6695330524655395,
+      "diff_ci_hi": 0.23793228441948755,
+      "better": false,
+      "worse": false,
+      "share_engines_challenger_better": 0.49,
+      "wilcoxon_p": 0.45428466796875,
+      "wilcoxon_n_splits": 15,
+      "n_engines": 100,
+      "n_points": 71460
+    },
+    {
+      "substage": "A2-ext",
+      "challenger": "xgboost, cap 90, window 90",
+      "incumbent": "xgboost, cap 90, window 45",
+      "challenger_tag": "runs/FD003/xgboost/cap090_w090",
+      "incumbent_tag": "runs/FD003/xgboost/cap090_w045",
+      "metric": "critical_rmse",
+      "estimate_challenger": 4.0965406494698025,
+      "estimate_incumbent": 3.805482007741755,
+      "diff": 0.29105864172804763,
+      "diff_ci_lo": -0.19383454616925594,
+      "diff_ci_hi": 0.7239046112814239,
+      "better": false,
+      "worse": false,
+      "share_engines_challenger_better": 0.35,
+      "wilcoxon_p": 0.03533935546875,
+      "wilcoxon_n_splits": 15,
+      "n_engines": 100,
+      "n_points": 71460
+    },
+    {
+      "substage": "A5a",
+      "challenger": "xgboost, cap 90, window 45, hi_consistent, baseline",
+      "incumbent": "xgboost, cap 90, window 45, hi_consistent",
+      "challenger_tag": "runs/FD003/xgboost/cap090_w045_hi_consistent_baseline",
+      "incumbent_tag": "runs/FD003/xgboost/cap090_w045_hi_consistent",
+      "metric": "critical_rmse",
+      "estimate_challenger": 4.077085031433408,
+      "estimate_incumbent": 3.4481139238243497,
+      "diff": 0.6289711076090585,
+      "diff_ci_lo": 0.1656817873145838,
+      "diff_ci_hi": 1.1932748698307516,
+      "better": false,
+      "worse": true,
+      "share_engines_challenger_better": 0.3,
+      "wilcoxon_p": 0.00537109375,
+      "wilcoxon_n_splits": 15,
+      "n_engines": 100,
+      "n_points": 71460
+    },
+    {
+      "substage": "A5b",
+      "challenger": "xgboost, cap 90, window 45, hi_consistent, subpop_prob",
+      "incumbent": "xgboost, cap 90, window 45, hi_consistent",
+      "challenger_tag": "runs/FD003/xgboost/cap090_w045_hi_consistent_subpop_prob",
+      "incumbent_tag": "runs/FD003/xgboost/cap090_w045_hi_consistent",
+      "metric": "critical_rmse",
+      "estimate_challenger": 3.6610501942903286,
+      "estimate_incumbent": 3.4481139238243497,
+      "diff": 0.21293627046597896,
+      "diff_ci_lo": 0.098070861829227,
+      "diff_ci_hi": 0.33956864364732364,
+      "better": false,
+      "worse": true,
+      "share_engines_challenger_better": 0.29,
+      "wilcoxon_p": 0.02154541015625,
+      "wilcoxon_n_splits": 15,
+      "n_engines": 100,
+      "n_points": 71460
+    }
+  ],
+  "decisions": [],
+  "notes": [
+    "Stage A adopted spec (re-run under current code where compared): xgboost, cap 90, window 45, hi_consistent",
+    "A4 at N = 30: AUC 0.997 [0.989, 1.000], shuffled-label control 0.463 [0.348, 0.578] -> gate passed"
+  ],
+  "extra": {
+    "a4_gate": {
+      "passed": true,
+      "detail": "A4 at N = 30: AUC 0.997 [0.989, 1.000], shuffled-label control 0.463 [0.348, 0.578] -> gate passed"
+    }
+  },
+  "configs": {
+    "runs/FD003/xgboost/cap090_w045": {
+      "dataset": "FD003",
+      "feature_blocks": {
+        "extra_sensors": [],
+        "health_index": "none",
+        "regime_onehot": false
+      },
+      "feature_seconds": 15.280812700046226,
+      "fit_seconds": {
+        "xgboost": 56.73449050006457
+      },
+      "models": {
+        "xgboost": {
+          "critical_rmse": 3.805482007741755,
+          "critical_rmse_ci_hi": 4.43519209563986,
+          "critical_rmse_ci_lo": 3.2751068290709107,
+          "iteration_budget_median": 223.0,
+          "mae": 64.51822522219709,
+          "n_engines": 100,
+          "n_points": 7500,
+          "n_splits": 15,
+          "nasa_mean_per_engine_capped": 0.6427463994203982,
+          "resumed_splits": 0,
+          "rmse": 102.26689125827549
+        }
+      },
+      "rul_cap": 90.0,
+      "seq_len": 30,
+      "subpopulations": {
+        "xgboost": {
+          "subpop_0": {
+            "ci_hi": 5.235868644106339,
+            "ci_lo": 3.647136871212385,
+            "estimate": 4.416462919054453,
+            "n_engines": 56
+          },
+          "subpop_1": {
+            "ci_hi": 3.1819208593445434,
+            "ci_lo": 2.5121858723140376,
+            "estimate": 2.8439777963235313,
+            "n_engines": 44
+          }
+        }
+      },
+      "tag": "runs/FD003/xgboost/cap090_w045",
+      "wall_seconds": 114.74031770019792,
+      "window": 45
+    },
+    "runs/FD003/xgboost/cap090_w060": {
+      "dataset": "FD003",
+      "feature_blocks": {
+        "extra_sensors": [],
+        "health_index": "none",
+        "regime_onehot": false
+      },
+      "feature_seconds": 17.6895636995323,
+      "fit_seconds": {
+        "xgboost": 29.466287600109354
+      },
+      "models": {
+        "xgboost": {
+          "critical_rmse": 3.6544724564457676,
+          "critical_rmse_ci_hi": 4.093704216784718,
+          "critical_rmse_ci_lo": 3.2469954966432417,
+          "iteration_budget_median": 195.0,
+          "mae": 64.57214675479464,
+          "n_engines": 100,
+          "n_points": 7500,
+          "n_splits": 15,
+          "nasa_mean_per_engine_capped": 0.6537967773745951,
+          "resumed_splits": 0,
+          "rmse": 102.31008983456152
+        }
+      },
+      "rul_cap": 90.0,
+      "seq_len": 30,
+      "subpopulations": {
+        "xgboost": {
+          "subpop_0": {
+            "ci_hi": 4.761076212593437,
+            "ci_lo": 3.5458523180712973,
+            "estimate": 4.143549332011171,
+            "n_engines": 56
+          },
+          "subpop_1": {
+            "ci_hi": 3.209272881693716,
+            "ci_lo": 2.622416898253027,
+            "estimate": 2.915681870002532,
+            "n_engines": 44
+          }
+        }
+      },
+      "tag": "runs/FD003/xgboost/cap090_w060",
+      "wall_seconds": 90.48210850008763,
+      "window": 60
+    },
+    "runs/FD003/xgboost/cap090_w090": {
+      "dataset": "FD003",
+      "feature_blocks": {
+        "extra_sensors": [],
+        "health_index": "none",
+        "regime_onehot": false
+      },
+      "feature_seconds": 20.008633999852464,
+      "fit_seconds": {
+        "xgboost": 25.345299100270495
+      },
+      "models": {
+        "xgboost": {
+          "critical_rmse": 4.0965406494698025,
+          "critical_rmse_ci_hi": 4.468029595279383,
+          "critical_rmse_ci_lo": 3.7334375988665296,
+          "iteration_budget_median": 156.0,
+          "mae": 64.94647714479811,
+          "n_engines": 100,
+          "n_points": 7500,
+          "n_splits": 15,
+          "nasa_mean_per_engine_capped": 0.7255707811441696,
+          "resumed_splits": 0,
+          "rmse": 102.38146729595448
+        }
+      },
+      "rul_cap": 90.0,
+      "seq_len": 30,
+      "subpopulations": {
+        "xgboost": {
+          "subpop_0": {
+            "ci_hi": 5.000900350616565,
+            "ci_lo": 4.027280431085955,
+            "estimate": 4.502424333141257,
+            "n_engines": 56
+          },
+          "subpop_1": {
+            "ci_hi": 4.003402222581308,
+            "ci_lo": 3.0710081744046853,
+            "estimate": 3.512776473230344,
+            "n_engines": 44
+          }
+        }
+      },
+      "tag": "runs/FD003/xgboost/cap090_w090",
+      "wall_seconds": 89.1959033999592,
+      "window": 90
+    },
+    "runs/FD003/xgboost/cap090_w045_hi_consistent": {
+      "dataset": "FD003",
+      "feature_blocks": {
+        "extra_sensors": [],
+        "health_index": "consistent",
+        "regime_onehot": false
+      },
+      "feature_seconds": 23.566253599943593,
+      "fit_seconds": {
+        "xgboost": 40.071078199660406
+      },
+      "models": {
+        "xgboost": {
+          "critical_rmse": 3.4481139238243497,
+          "critical_rmse_ci_hi": 3.9769524187099194,
+          "critical_rmse_ci_lo": 3.009049839678713,
+          "iteration_budget_median": 224.0,
+          "mae": 64.38876429637072,
+          "n_engines": 100,
+          "n_points": 7500,
+          "n_splits": 15,
+          "nasa_mean_per_engine_capped": 0.6013773785110674,
+          "resumed_splits": 0,
+          "rmse": 102.2098756463621
+        }
+      },
+      "rul_cap": 90.0,
+      "seq_len": 30,
+      "subpopulations": {
+        "xgboost": {
+          "subpop_0": {
+            "ci_hi": 4.680043500455924,
+            "ci_lo": 3.320741095001105,
+            "estimate": 3.988874622983053,
+            "n_engines": 56
+          },
+          "subpop_1": {
+            "ci_hi": 2.902271750745891,
+            "ci_lo": 2.3119218875131127,
+            "estimate": 2.6021241354898903,
+            "n_engines": 44
+          }
+        }
+      },
+      "tag": "runs/FD003/xgboost/cap090_w045_hi_consistent",
+      "wall_seconds": 107.83314340002835,
+      "window": 45
+    },
+    "runs/FD003/xgboost/cap090_w045_hi_consistent_baseline": {
+      "dataset": "FD003",
+      "feature_blocks": {
+        "extra_sensors": [],
+        "health_index": "consistent",
+        "regime_onehot": false
+      },
+      "feature_seconds": 25.221541800536215,
+      "fit_seconds": {
+        "xgboost": 24.054631099570543
+      },
+      "models": {
+        "xgboost": {
+          "critical_rmse": 4.077085031433408,
+          "critical_rmse_ci_hi": 4.680985626949692,
+          "critical_rmse_ci_lo": 3.52378534189066,
+          "iteration_budget_median": 94.0,
+          "mae": 64.69841389382482,
+          "n_engines": 100,
+          "n_points": 7500,
+          "n_splits": 15,
+          "nasa_mean_per_engine_capped": 0.6644151261168794,
+          "resumed_splits": 0,
+          "rmse": 102.30618164277388
+        }
+      },
+      "rul_cap": 90.0,
+      "seq_len": 30,
+      "subpopulations": {
+        "xgboost": {
+          "subpop_0": {
+            "ci_hi": 4.872843545279253,
+            "ci_lo": 3.7672953590505673,
+            "estimate": 4.348592897759614,
+            "n_engines": 56
+          },
+          "subpop_1": {
+            "ci_hi": 4.817428040217816,
+            "ci_lo": 2.754089492679077,
+            "estimate": 3.702847996932089,
+            "n_engines": 44
+          }
+        }
+      },
+      "tag": "runs/FD003/xgboost/cap090_w045_hi_consistent_baseline",
+      "wall_seconds": 91.6222240999341,
+      "window": 45
+    },
+    "runs/FD003/A4": {
+      "dataset": "FD003",
+      "results": [
+        {
+          "auc": 0.9967532467532467,
+          "auc_per_repeat": [
+            0.9918831168831168,
+            0.9963474025974026,
+            0.994724025974026
+          ],
+          "ci_hi": 1.0,
+          "ci_lo": 0.9885700224398204,
+          "n_boot_defined": 1000,
+          "n_cycles": 30,
+          "n_engines": 100,
+          "strong": true
+        },
+        {
+          "auc": 0.9943181818181819,
+          "auc_per_repeat": [
+            0.992288961038961,
+            0.9955357142857143,
+            0.9955357142857143
+          ],
+          "ci_hi": 1.0,
+          "ci_lo": 0.9834460817935888,
+          "n_boot_defined": 1000,
+          "n_cycles": 50,
+          "n_engines": 100,
+          "strong": true
+        },
+        {
+          "auc": 1.0,
+          "auc_per_repeat": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "ci_hi": 1.0,
+          "ci_lo": 0.9999999999999999,
+          "n_boot_defined": 1000,
+          "n_cycles": 100,
+          "n_engines": 100,
+          "strong": true
+        }
+      ],
+      "shuffled_control": [
+        {
+          "auc": 0.46306818181818177,
+          "auc_per_repeat": [
+            0.4508928571428571,
+            0.476461038961039,
+            0.45495129870129863
+          ],
+          "ci_hi": 0.5782158153815623,
+          "ci_lo": 0.34803982713628745,
+          "holds_chance": true,
+          "n_boot_defined": 1000,
+          "n_cycles": 30,
+          "n_engines": 100
+        },
+        {
+          "auc": 0.349025974025974,
+          "auc_per_repeat": [
+            0.3291396103896104,
+            0.3583603896103896,
+            0.37865259740259744
+          ],
+          "ci_hi": 0.45659048101999417,
+          "ci_lo": 0.24679616365101067,
+          "holds_chance": false,
+          "n_boot_defined": 1000,
+          "n_cycles": 50,
+          "n_engines": 100
+        },
+        {
+          "auc": 0.44764610389610393,
+          "auc_per_repeat": [
+            0.5215097402597402,
+            0.4565746753246753,
+            0.40016233766233766
+          ],
+          "ci_hi": 0.566178195448103,
+          "ci_lo": 0.3365555555555556,
+          "holds_chance": true,
+          "n_boot_defined": 1000,
+          "n_cycles": 100,
+          "n_engines": 100
+        }
+      ],
+      "strong_threshold_ci_lo": 0.8,
+      "subpopulation_sizes": {
+        "0": 56,
+        "1": 44
+      },
+      "tag": "runs/FD003/A4"
+    },
+    "runs/FD003/xgboost/cap090_w045_hi_consistent_subpop_prob": {
+      "dataset": "FD003",
+      "feature_blocks": {
+        "extra_sensors": [],
+        "health_index": "consistent",
+        "regime_onehot": false
+      },
+      "feature_seconds": 34.99515899945982,
+      "fit_seconds": {
+        "xgboost": 22.543026600265875
+      },
+      "models": {
+        "xgboost": {
+          "critical_rmse": 3.6610501942903286,
+          "critical_rmse_ci_hi": 4.247037640631738,
+          "critical_rmse_ci_lo": 3.222128657624561,
+          "iteration_budget_median": 111.0,
+          "mae": 64.49050140508977,
+          "n_engines": 100,
+          "n_points": 7500,
+          "n_splits": 15,
+          "nasa_mean_per_engine_capped": 0.591548451679665,
+          "resumed_splits": 0,
+          "rmse": 102.21365436033416
+        }
+      },
+      "rul_cap": 90.0,
+      "seq_len": 30,
+      "subpopulations": {
+        "xgboost": {
+          "subpop_0": {
+            "ci_hi": 4.939420661083606,
+            "ci_lo": 3.4830723006619793,
+            "estimate": 4.16226432410255,
+            "n_engines": 56
+          },
+          "subpop_1": {
+            "ci_hi": 3.198283383438291,
+            "ci_lo": 2.601720423562652,
+            "estimate": 2.9004700696779744,
+            "n_engines": 44
+          }
+        }
+      },
+      "tag": "runs/FD003/xgboost/cap090_w045_hi_consistent_subpop_prob",
+      "wall_seconds": 100.78458199999295,
+      "window": 45
+    }
+  }
+}

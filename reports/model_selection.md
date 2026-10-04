@@ -486,6 +486,69 @@ FD002/FD004 and is not adopted (Stage A, deviation 2).
 
 ---
 
+## Addendum results (A1-check and Stage X, XGBoost, seed 42, 5 × 3 folds)
+
+Completed 2026-10-04 at code `521ada5`.
+
+- **Full tables:**
+  - `reports/selection/a1_check.md`;
+  - `reports/selection/stage_X_FD00x.md` / `.json`.
+- **Re-runs:** every incumbent was re-run under the current code (D52).
+- **Δ:** challenger − incumbent, critical RMSE, paired engine-bootstrap 95% CI.
+
+**A1-check — cap 90 confirmed** on every dataset (Δ = cap 90 − cap 125):
+
+- **Urgent-bucket RMSE:** better everywhere. FD001 −2.45 [−3.32, −1.61], FD002 −3.35
+  [−3.95, −2.78], FD003 −2.12 [−3.09, −1.18], FD004 −2.75 [−3.37, −2.16].
+- **Critical late %:** lower everywhere (−2.2 to −3.6 pp).
+- **Urgent late %:** not different, and lower on FD003.
+- **Decision check:** worse at no budget, and better at 30 cycles on FD002 (+1.9 [0.6, 3.5])
+  and FD004 (+1.7 [0.3, 3.1]).
+
+So cap 90 is not an artefact of the critical-RMSE bias on these metrics.
+
+**Stage X outcome: no change to any Stage A spec.**
+
+| dataset | A2-ext: window 60 vs winner | window 90 vs winner | A5a + baseline | A5b + subpop_prob | carried spec |
+|---|---|---|---|---|---|
+| FD001 | −0.21 [−0.46, 0.05] | +0.16 [−0.27, 0.55] | −0.01 [−0.21, 0.22] | out of scope | cap 90, window 45, `hi_pooled` |
+| FD002 | −0.08 [−0.28, 0.13] | +0.20 [−0.06, 0.47] | **+0.36 [0.11, 0.62] worse** | out of scope | cap 90, window 45, `hi_consistent` |
+| FD003 | −0.15 [−0.67, 0.24] | +0.29 [−0.19, 0.72] | **+0.63 [0.17, 1.19] worse** | **+0.21 [0.10, 0.34] worse** | cap 90, window 45, `hi_consistent` |
+| FD004 | +0.60 [−0.18, 1.62] | +1.31 [−0.02, 2.78] | **+0.50 [0.13, 0.82] worse** | +0.30 [−0.02, 0.62] | cap 90, window 30, `hi_consistent` + `regime_onehot` |
+
+n = 100 / 260 / 100 / 249 engines.
+
+- **Window:** no longer window beats the A2 winner. The A2 edge flag is resolved: 45 was not
+  an artefact of the grid's upper edge. A3 was therefore not re-run.
+- **A5a (baseline deviation):** worse on three datasets, not different on FD001.
+  - The engine's early-life level adds no usable signal beyond the within-regime z and the
+    health index.
+  - Its 28 extra columns hurt.
+- **A5b (subpopulation probability):**
+  - The A4 gate passed on FD003 (AUC 0.997 [0.989, 1.000]; shuffled-label control 0.463
+    [0.348, 0.578]) and on FD004 (0.995 [0.989, 0.999]; control 0.475 [0.405, 0.545]).
+  - Yet the block is worse on FD003 and not different on FD004.
+  - The subpopulation is identifiable early, but knowing it does not improve critical-zone
+    accuracy. A plausible reading (not tested) is that the late-life sensors already reveal
+    the degradation mode by the time the critical bucket is reached.
+- **A4 re-run** (MLflow-logged, with control): it reproduces the Stage A AUCs.
+  - 11 of 12 shuffled-label CIs hold 0.5.
+  - **Flag:** FD002 at N = 30 gives 0.581 [0.507, 0.660], just above 0.5, while the real AUC
+    there is 0.523 [0.445, 0.597], i.e. chance.
+  - With 12 single-permutation controls, one 95% CI excluding 0.5 is expected about one time
+    in four (1 − 0.975¹² ≈ 0.26). The real AUC is not elevated, so this is not read as
+    leakage.
+  - No decision depends on it: FD002 is outside the A5b scope, and the FD003/FD004 controls
+    hold 0.5.
+- **Compute:** 22 configuration runs (43 min of CV run time, 1.8–2.4 min each) + 4 A4 runs,
+  serial.
+
+**Carried into Stage B:** the specs above (column "carried spec"). The LSTM runs at cap 90 with
+each dataset's window. The baseline channels are not tested in B2, because A5a was adopted
+nowhere.
+
+---
+
 ## Reproducibility (environment of the Stage A runs)
 
 - Generated: 2026-10-03T19:42:02+00:00
