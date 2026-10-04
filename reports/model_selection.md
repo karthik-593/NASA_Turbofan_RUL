@@ -242,6 +242,250 @@ Per dataset: cap 90 for the LSTM (B1 seq_len, B2 regime one-hot channels on FD00
 the Stage-A XGBoost configs above as the XGBoost candidates for Stage C. **Work stops here for
 review before Stage B.**
 
+---
+
+## Addendum pre-registration (post-Stage-A, 2026-10-04)
+
+**This section was written after the Stage A results were seen.** Its motivation is the Stage A
+review: cap 90 and window 45 won at the edges of their grids, the `sensors+` block was
+infeasible on two datasets, and A4 found the subpopulation identifiable early on FD003/FD004.
+It fixes the follow-up rules and definitions below **before any of the runs it describes**.
+The §0 rules (ranking metric, "better", ties to the simpler option, one factor at a time,
+decision check, two-candidate rule, no multiplicity correction in screening) carry over
+unchanged unless stated here.
+
+### Changes since Stage A that affect every later run
+
+- **Closed-form rolling slope (D52, `9e98ebe`).** It equals the former `np.polyfit` slope to
+  1.8e-15 but is not bit-identical. So no new run is paired with a Stage A run: every paired
+  comparison below re-runs its incumbent under the current code (tags `X/…`, `B/…`, `C/…`,
+  `D/…`). The A1-check (below) is the one exception: it re-reads the Stage A A1 runs only.
+- **Code freeze before Stage B.** The code for every stage (B–D orchestration, the new feature
+  blocks, tuning) is committed before the first addendum run. Resume (D49) keys on the `src/`
+  tree, so Stage D can then reuse the seed-42 splits of its finalists. Any later `src/` change
+  is reported as a deviation.
+
+### Known metric bias, and why the cap grid is not extended
+
+Critical RMSE (deployment view) structurally favours a lower `rul_cap`: a narrower training
+target puts more of the model's capacity on the low-RUL region the critical bucket scores. For
+that reason Stage A's "cap 90 wins everywhere" is not taken at face value, and the cap is
+**not extended below 90**.
+
+### A1-check — is cap 90 an artefact of that bias? (no new runs)
+
+- **Data:** the existing A1 runs, cap 90 vs cap 125, per dataset: XGBoost, base features,
+  window 20, seed 42, 5 × 3 folds, deployment view. The held-out predictions are those logged
+  to MLflow by the A1 parent runs (identical copies in `selection/A/<ds>/cap090|cap125/`).
+- **Metrics,** each paired (cap 90 − cap 125) with a 1,000-replicate paired engine-bootstrap
+  CI. Each is chosen because neither cap binds where it is measured:
+  - **urgent-bucket RMSE** against uncapped truth (truth in [25, 50), below both caps);
+  - **late %** in the critical and in the urgent bucket against uncapped truth (truth < 50).
+    Overall late % favours the lower cap by construction (a capped model is "early" on every
+    cycle above its cap), so it is reported for information only;
+  - the **matched-budget decision check** (caught % with lead ≥ 20 at mean wasted life
+    20 / 30 / 40 cycles; D47).
+- **Rule:**
+  - Cap 90 is **not worse** on a dataset when:
+    - the urgent-RMSE Δ CI does not lie entirely above 0;
+    - neither late-% Δ CI lies entirely above 0;
+    - no decision-check Δ CI lies entirely below 0.
+  - Cap 90 is **confirmed** only if it is not worse on every dataset.
+  - Otherwise the addendum **stops**: the A1-check is reported and nothing below runs.
+- To make these metrics comparable across caps, `compare.paired_compare` allows a bucket metric
+  against uncapped truth when the bucket's upper bound is ≤ both caps (critical and urgent at
+  caps ≥ 50). Every other cross-cap metric stays refused (D01).
+
+### A2-ext — longer windows
+
+- **Setup:** per dataset, window ∈ {60, 90} vs the A2 winner (FD001–FD003: 45, FD004: 30).
+  All at cap 90 with base features, XGBoost, seed 42, 5 × 3 folds. The incumbent is re-run.
+- **Rule:** same as A2. Among the windows that beat the incumbent, the one with the lowest
+  point estimate is adopted.
+- **Stopping:** if 90 wins, 90 is carried forward and the edge is documented as a limitation.
+  There is no further extension.
+- **Follow-on:** if the window changes on a dataset, A3 is re-run there at the new window: the
+  same blocks, the same rule and the same A3-combined step, with `sensors+` only where it is
+  feasible (FD001, FD003). Its result replaces the Stage A A3 result for that dataset.
+
+### A5a — baseline-deviation block (all datasets)
+
+- **Features,** per base sensor, from its within-regime z (normalization fitted per fold, as
+  for every block):
+  - `<s>_base`: the mean of z over the engine's cycles 1..min(t, 30). It is an expanding mean
+    until cycle 30, then fixed. Causal: at cycle t it uses cycles ≤ t only.
+  - `<s>_dev`: `<s>_mean` (the run's rolling mean) − `<s>_base`.
+  - 28 columns. The number of baseline cycles is `features.baseline_cycles` = 30.
+- **History requirement:** an engine whose first observed cycle is not 1 raises an error,
+  rather than silently using a shifted baseline.
+  - **Serving requirement (documented, not built):** serving needs the asset's full history
+    from cycle 1, or a per-asset baseline stored once at cycle 30. Today's `/predict` takes a
+    recent window only, and `save_bundle` refuses any active feature block.
+- **Comparison:** the current adopted spec (after A2-ext / A3) + baseline vs that spec,
+  re-run. Adopted if better.
+
+### A4 re-run — through the pipeline, with a label-shuffle control
+
+- **Re-run:** the `identifiability` stage, unchanged except for the control. Logged to
+  MLflow, per dataset.
+- **Control:** for each N, labels are permuted across engines (seed `selection.seed`), and the
+  identical procedure gives a shuffled-label AUC with an engine-bootstrap CI. This logs and
+  replaces the exploratory FD003 check of the Stage A summary.
+- **Gate for A5b,** per dataset, all three conditions required:
+  - real AUC ≥ 0.99 at N = 30;
+  - real CI lower bound ≥ `auc_strong_lower` (0.80);
+  - shuffled-label CI contains 0.5.
+
+### A5b — subpopulation-probability block (FD003, FD004 only, if the gate passes)
+
+- **Labels:** in every fold, the D35 subpopulation labels are re-derived on the fold's
+  inner-training engines only (the `analysis.subpopulation` clustering on their full
+  trajectories). No held-out or inner-validation engine shapes them.
+- **Classifier (the A4 model):**
+  - inputs: the mean and OLS slope of each base sensor's within-regime z over cycles 1..30
+    (`features.subpop_prob_cycles`);
+  - model: standardized L2 logistic regression with C = `features.subpop_prob_c` (1.0, as in
+    A4), fitted on the inner-training engines.
+- **Feature:** `subpop_p` = the predicted probability of label 1. It is defined from cycle 30
+  on; before cycle 30 it is missing (NaN), handled by XGBoost's native missing-value split.
+  - **Inner-training rows** get cross-fitted probabilities: 5 stratified inner folds
+    (`features.subpop_prob_inner_folds`, seed `features.subpop_prob_seed` = 0). The training
+    feature therefore carries out-of-sample error, like at serving.
+  - **Inner-validation and held-out engines** get the classifier fitted on all inner-training
+    engines.
+- **Scope and constraints:**
+  - XGBoost only, because the LSTM channels cannot carry a missing value. A sequence model with
+    this block raises an error.
+  - The serving requirement is as for A5a (cycles 1..30 must be seen).
+  - D35 is updated: the label stays a training target only; this causal derived feature is
+    permitted because A4 shows it is predictable from the first 30 cycles.
+- **Comparison:** the spec after A5a + `subpop_p` vs the spec after A5a. Adopted if better.
+
+### Audit correction (recorded in `docs/decisions.md`)
+
+Audit §E classed a sensor "constant" only when it was single-valued within *every* regime, and
+reported its within-regime std pooled across regimes. That masked per-regime constancy: s10
+(FD002 regime 1) and s16 (FD002 5 of 6 regimes, FD004 4 of 6) are constant within some
+regimes, so within-regime normalization is undefined for them. `sensors+` is infeasible on
+FD002/FD004 and is not adopted (Stage A, deviation 2).
+
+### Stage B — LSTM (replaces the §0 Stage B text)
+
+- **Setup:** registry defaults, seed 42, 5 × 3 folds, cap 90 on every dataset (cap 90 having
+  passed the A1-check).
+  - The run's `window` is set to the dataset's adopted XGBoost window. It matters only for the
+    `<s>_dev` channels.
+- **B1 — sequence length:** `seq_len` ∈ {20, 30, 45, 60}, with base channels (14 within-regime
+  z + mask); the incumbent is 30.
+  - If 60 wins, it is carried forward and flagged as a grid edge, with no extension.
+- **B2 — channels,** each added alone to base at the B1 winner:
+  - `regime_onehot` (FD002 / FD004);
+  - the health-index score `hi` of the variant XGBoost adopted on that dataset (if any);
+  - the baseline-deviation channels `<s>_base`, `<s>_dev` (only where A5a was adopted).
+- **Adoption:** a channel block is adopted if it beats base. If ≥ 2 are adopted, their union
+  is run once (B2-combined) and carried if it beats base; otherwise the adopted block with the
+  lowest estimate is carried.
+- **Same rules** as Stage A, including the informational decision check for every adopted
+  change.
+
+### Stage C — tuning (as §0, with the search spaces fixed here)
+
+- **Configs tuned:** per dataset, the final XGBoost spec (after the addendum) and the final
+  LSTM spec (after B).
+- **Search:** Optuna TPE (seed 42), 30 trials for XGBoost and 20 for the LSTM.
+  - Each trial is one pipeline run (`cv_select`) on the repeat-1 folds: `cv.n_repeats` = 1 with
+    the same `cv.seed` reproduces repeat 1 of the 5 × 3 scheme exactly.
+  - Seed 42 throughout.
+  - **Objective:** the deployment critical RMSE point estimate over those 5 splits. Trials run
+    with `bootstrap.n_boot` = 200, since their CIs are not used.
+- **Search spaces** (`params.yaml` `tuning`):
+  - **XGBoost** (`models.xgboost.params`):
+    - `max_depth` int [3, 10];
+    - `learning_rate` log [0.01, 0.3];
+    - `subsample` [0.5, 1.0];
+    - `colsample_bytree` [0.5, 1.0];
+    - `min_child_weight` log [1, 50];
+    - `reg_alpha` log [1e-3, 10];
+    - `reg_lambda` log [1e-3, 10];
+    - `n_estimators` fixed at 2,000 for tuned configs (early stopping at 50 rounds decides).
+  - **LSTM** (`models.lstm`):
+    - `hidden` ∈ {16, 32, 64, 128};
+    - `layers` int [1, 3];
+    - `dropout` [0.0, 0.5];
+    - `lr` log [3e-4, 3e-3];
+    - `batch_size` ∈ {128, 256, 512};
+    - `head_hidden` ∈ {8, 16, 32}.
+- **Evaluation:**
+  - The best trial's parameters run on the full 5 × 3 folds (seed 42).
+  - They are compared with the untuned incumbent on **repeats 2–3 only** (10 splits; both
+    runs' repeat-1 points are dropped), with the paired rule. Adopted only if better.
+  - Residual optimism as stated in §0.
+- **Resume:** a restarted study replays its trials deterministically (same sampler seed, same
+  history), and completed trial runs are reused from `selection/`.
+
+### Stage D — confirmation (replaces the §0 Stage D text)
+
+- **Finalists:** per dataset, the best XGBoost spec and the best LSTM spec after Stage C. Each
+  runs with all 5 seeds (`params.yaml` `seeds`) × 5 × 3 folds.
+- **Leave-one-out check of every adopted change** in each finalist spec: the spec vs the spec
+  minus that change, also with 5 seeds. "Minus" reverts to the original default:
+  - cap 90 → 125;
+  - window → 20 (XGBoost);
+  - `seq_len` → 30 (LSTM);
+  - the block → removed;
+  - tuned parameters → registry defaults.
+- **Parsimony:** a change is kept only if spec − (spec minus change) has a paired Δ critical
+  RMSE CI entirely below 0. Otherwise it is **dropped**.
+  - **Cap** is kept only if, in addition, the A1-check criteria (urgent RMSE, critical and
+    urgent late %, decision check) are not worse at 5 seeds.
+  - If exactly one change is dropped, that leave-one-out run becomes the finalist.
+  - If several are dropped, the spec without all of them is run (5 seeds) and becomes the
+    finalist, unless the full spec beats it. That case is reported as an interaction.
+- **Finalist comparison** (XGBoost vs LSTM), on paired Δ critical RMSE (5 seeds × 15 splits):
+  - "Better" needs the CI to exclude 0. A tie goes to XGBoost (simpler and cheaper).
+  - Also reported: Wilcoxon over fold × seed, per-subpopulation critical RMSE, and the
+    matched-budget decision check between the finalists.
+- **Locking:**
+  - **RMSE-better winner:** locked if it is also better on the decision check. Otherwise both
+    finalists are locked-pending.
+  - **Tie:** XGBoost wins and is locked, unless the LSTM is better on the decision check; then
+    both are locked-pending.
+
+### Stage E (as §0)
+
+- **Outputs:**
+  - `notebooks/04_model_selection.ipynb`;
+  - this report;
+  - candidate specs in `specs/<dataset>_<model>.yaml` (`evaluation.spec` fields plus the
+    feature-block, window / `seq_len` and tuned-parameter overrides);
+  - `locked: true` only for a single winner, otherwise `locked: false`,
+    `status: locked-pending`.
+- **Not run:** `final_eval`. `params.yaml` defaults are not changed (a later step, after
+  review).
+
+### Order, stopping and compute
+
+- **Order:** A1-check → A2-ext (→ A3 re-run) → A5a → A4 → A5b → B → C → D → E. Datasets run
+  serially.
+- **Push:** after each stage, with a summary appended here.
+- **Stops:** only if the A1-check fails, or after Stage E.
+- **Estimate** (measured 2026-10-04, current code, one fold of FD001 / FD004):
+  - XGBoost: 1.8 / 3.6 s per split, i.e. ~2–2.5 min per 5 × 3 configuration including
+    evaluation.
+  - LSTM (`seq_len` 30): 9.5 / 41 s per split, i.e. ~4 / ~12 min per configuration.
+
+  | stage | runs | estimate |
+  |---|---|---|
+  | Addendum | ~8–13 XGBoost configurations per dataset | ~1.5–2 h |
+  | B | ~7–8 LSTM configurations per dataset, `seq_len` up to 60 | ~5 h |
+  | C | 120 XGBoost + 80 LSTM trials on 5 splits, plus 8 full evaluations | ~7 h |
+  | D | 2 finalists + ~9 leave-one-out specs per dataset, 5 seeds (the LSTM on FD002/FD004 dominates) | ~12 h |
+  | E | notebook and report | <1 h |
+
+  ≈ 26 h serial in total.
+
+---
+
 ## Reproducibility (environment of the Stage A runs)
 
 - Generated: 2026-10-03T19:42:02+00:00
