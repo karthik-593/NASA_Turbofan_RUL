@@ -549,6 +549,39 @@ nowhere.
 
 ---
 
+## Stage B — LSTM results (registry defaults, cap 90, seed 42, 5 × 3 folds)
+
+Completed 2026-10-04. Full tables are in `reports/selection/stage_B_FD00x.md` / `.json`. Δ is
+challenger − incumbent in critical RMSE.
+
+| dataset | B1 adopted `seq_len` (vs 30) | B2 channels (each vs base at the B1 winner) | Stage-B LSTM spec | critical RMSE [95% CI] (n) |
+|---|---|---|---|---|
+| FD001 | **60** (−0.53 [−0.83, −0.26]; 45: −0.47 [−0.72, −0.22]) | `hi_pooled` +0.04 [−0.24, 0.34] | cap 90, `seq_len` 60, base channels | 3.56 [3.22, 3.93] (100) |
+| FD002 | **60** (−0.86 [−1.15, −0.58]; 45: −0.63 [−0.86, −0.39]) | one-hot +0.02 [−0.14, 0.19]; `hi_consistent` **+0.57 [0.37, 0.78] worse** | cap 90, `seq_len` 60, base channels | 3.73 [3.46, 4.01] (260) |
+| FD003 | 30 (45: −0.09 [−0.33, 0.17]; 60: **+0.35 [0.02, 0.70] worse**) | `hi_consistent` +0.20 [−0.00, 0.41] | cap 90, `seq_len` 30, base channels | 3.87 [3.48, 4.27] (100) |
+| FD004 | 30 (45: −0.11 [−0.33, 0.13]; 60: −0.21 [−0.50, 0.08]) | one-hot −0.12 [−0.43, 0.26]; `hi_consistent` +0.03 [−0.19, 0.25] | cap 90, `seq_len` 30, base channels | 5.74 [5.37, 6.15] (249) |
+
+- **Sequence length:**
+  - `seq_len` 20 is worse than 30 everywhere (+1.07 to +1.43).
+  - On FD001/FD002 the longest sequence wins. **Flag: 60 is the grid's upper edge on FD001 and
+    FD002** (pre-registered: no extension). On FD003, 60 is already worse than 30, so the curve
+    turns there.
+  - **Decision check for 60 vs 30:** more caught at the 20-cycle budget on FD001 (+4.5
+    [0.9, 7.8] pp) and FD002 (+4.9 [1.9, 8.0]); also at 30 cycles on FD002 (+2.6 [0.5, 4.6]).
+- **Channels:**
+  - No channel block is adopted anywhere. The LSTM learns what the health index and regime
+    indicators would give it from the 14 normalized channels.
+  - On FD002 the health-index score as a channel is worse.
+- **Context, not a ranking.** The ranking is Stage D, at 5 seeds. At one seed, the Stage-B LSTM
+  is below the Stage-X XGBoost spec on FD002 (3.73 vs 3.94) and FD004 (5.74 vs 6.11), and above
+  it on FD001 (3.56 vs 3.41) and FD003 (3.87 vs 3.45). XGBoost values are its current-code
+  re-runs in Stage X.
+- **Compute:** 22 LSTM configuration runs, 3.4 h of run time (FD002/FD004 10–13 min each).
+
+**Carried into Stage C:** per dataset, the Stage-X XGBoost spec and the Stage-B LSTM spec above.
+
+---
+
 ## Reproducibility (environment of the Stage A runs)
 
 - Generated: 2026-10-03T19:42:02+00:00
