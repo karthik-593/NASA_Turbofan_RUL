@@ -582,6 +582,37 @@ challenger − incumbent in critical RMSE.
 
 ---
 
+## Stage C — tuning results (Optuna TPE, seed 42; tuned on repeat 1, evaluated on repeats 2–3)
+
+Completed 2026-10-05. Full tables, including every trial's parameters and objective, are in
+`reports/selection/stage_C_FD00x.md` / `.json`.
+
+| dataset | XGBoost: tuned − untuned, critical RMSE (repeats 2–3) | adopted | LSTM: tuned − untuned (repeats 2–3) | adopted |
+|---|---|---|---|---|
+| FD001 | −0.17 [−0.28, −0.07] | **yes** | −0.72 [−1.10, −0.35] | **yes** |
+| FD002 | +0.12 [−0.02, 0.27] | no | +0.03 [−0.19, 0.24] | no |
+| FD003 | −0.11 [−0.27, 0.03] | no | −0.31 [−0.62, −0.01] | **yes** |
+| FD004 | −0.33 [−0.47, −0.21] | **yes** | +0.15 [−0.17, 0.46] | no |
+
+Each comparison uses 10 splits of the held-out engines (n = 100 / 260 / 100 / 249).
+
+- **Adopted** where the CI excludes 0: XGBoost on FD001/FD004, the LSTM on FD001/FD003.
+- **Decision check:** no adopted tuning is worse at any budget.
+- **Tuned parameters** (in `params.yaml`-key form in the stage JSONs):
+  - The FD001/FD002 LSTM optimum is a larger network: hidden 128, 2 layers, batch 128. The two
+    studies replayed the same TPE path.
+  - The FD003/FD004 LSTM optima use a single layer.
+  - XGBoost optima differ widely by dataset: FD001 depth 10 with strong regularization; FD004
+    depth 5, learning rate 0.012.
+- **Residual optimism, as pre-registered:**
+  - Every repeat-2/3 held-out engine tuned the config in some repeat-1 fold.
+  - The non-adoptions on FD002 show the evaluation can still say no.
+- **Compute:** 200 trials + 16 full evaluations, 10.0 h of run time.
+
+**Carried into Stage D:** per dataset, the XGBoost and LSTM specs with tuning where adopted.
+
+---
+
 ## Reproducibility (environment of the Stage A runs)
 
 - Generated: 2026-10-03T19:42:02+00:00
