@@ -10,6 +10,7 @@ from turbofan.evaluation.compare import (
     CAP_INVARIANT,
     CapComparisonError,
     CVResult,
+    cap_invariant,
     matched_budget_compare,
     paired_compare,
 )
@@ -85,6 +86,32 @@ class TestGuards:
             n_boot=50,
         )
         assert np.isfinite(out["diff"])
+
+    @pytest.mark.parametrize(
+        ("metric", "truth", "caps", "ok"),
+        [
+            ("urgent_rmse", "uncapped", (125.0, 90.0), True),  # truth < 50, below both caps
+            ("critical_late_pct", "uncapped", (125.0, 90.0), True),
+            ("urgent_late_pct", "uncapped", (125.0, 90.0), True),
+            ("monitor_rmse", "uncapped", (125.0, 90.0), False),  # truth up to 100 > 90
+            ("monitor_rmse", "uncapped", (125.0, 105.0), True),
+            ("urgent_rmse", "capped", (125.0, 90.0), False),
+            ("late_pct", "uncapped", (125.0, 90.0), False),
+        ],
+    )
+    def test_bucket_metrics_below_both_caps_are_cap_invariant(
+        self, metric: str, truth: str, caps: tuple[float, float], ok: bool
+    ) -> None:
+        assert cap_invariant(metric, truth, caps) is ok
+        a = _res("a", _points(1.0), cap=caps[0])
+        b = _res("b", _points(2.0, seed=1), cap=caps[1])
+        rng = np.random.default_rng(0)
+        if ok:
+            out = paired_compare(a, b, rng, metric=metric, truth=truth, n_boot=50)
+            assert np.isfinite(out["diff"])
+        else:
+            with pytest.raises(CapComparisonError):
+                paired_compare(a, b, rng, metric=metric, truth=truth, n_boot=50)
 
     def test_same_cap_allows_any_metric(self) -> None:
         p = _points(1.0)

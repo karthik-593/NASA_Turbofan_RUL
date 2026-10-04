@@ -16,8 +16,9 @@ like-for-like. Paired engine bootstrap, the curves re-matched in every replicate
 
 Never across datasets (FD00x results are never pooled or averaged). Candidates trained with
 different ``rul_cap`` are only comparable on cap-invariant metrics (D01): critical-bucket
-RMSE (truth < 25 is never capped) and RMSE against uncapped truth; anything else raises
-``CapComparisonError``.
+RMSE (truth < 25 is never capped), RMSE against uncapped truth, and any bucket metric against
+uncapped truth whose bucket lies wholly below both caps (e.g. urgent RMSE / late % at caps >= 50:
+neither model's target is capped there); anything else raises ``CapComparisonError``.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ import numpy.typing as npt
 import pandas as pd
 from scipy import stats as sps
 
+from turbofan.config import MAINTENANCE_BUCKETS
 from turbofan.evaluation.cv_metrics import (
     CI_LEVEL,
     HEADLINE,
@@ -51,6 +53,7 @@ __all__ = [
     "CVResult",
     "CapComparisonError",
     "CAP_INVARIANT",
+    "cap_invariant",
     "paired_compare",
     "matched_budget_compare",
 ]
@@ -58,6 +61,18 @@ __all__ = [
 KEYS = ["unit", "cycle", "repeat", "fold", "seed"]
 # (metric, truth) pairs that do not depend on the training cap (D01)
 CAP_INVARIANT = frozenset({(HEADLINE, "uncapped"), (HEADLINE, "capped"), ("rmse", "uncapped")})
+
+
+def cap_invariant(metric: str, truth: str, caps: tuple[float, float]) -> bool:
+    """Whether ``metric`` against ``truth`` means the same for models trained at ``caps``."""
+    if (metric, truth) in CAP_INVARIANT:
+        return True
+    if truth != "uncapped":
+        return False
+    for name, _lo, hi in MAINTENANCE_BUCKETS:
+        if metric.startswith(f"{name}_") and hi <= min(caps):
+            return True
+    return False
 
 
 class CapComparisonError(ValueError):
@@ -118,11 +133,12 @@ def paired_compare(
             f"comparisons are per dataset — got {a.dataset} vs {b.dataset}; FD00x results "
             "are never pooled or averaged"
         )
-    if a.rul_cap != b.rul_cap and (metric, truth) not in CAP_INVARIANT:
+    if a.rul_cap != b.rul_cap and not cap_invariant(metric, truth, (a.rul_cap, b.rul_cap)):
         raise CapComparisonError(
             f"{a.name} (rul_cap {a.rul_cap}) vs {b.name} (rul_cap {b.rul_cap}): "
             f"{metric} against {truth} truth depends on the cap; use one of "
-            f"{sorted(CAP_INVARIANT)}"
+            f"{sorted(CAP_INVARIANT)} or a bucket metric against uncapped truth whose bucket "
+            "lies below both caps"
         )
     m = _paired_frame(a, b)
     # capped truth with differing caps is refused above, so one cap serves both sides
