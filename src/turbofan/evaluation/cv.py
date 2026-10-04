@@ -10,7 +10,9 @@ so early stopping never sees the held-out engines either.
 operating envelope — is fitted by ``add_features`` on the fold's inner-training engines only
 and reused unchanged on its inner-validation and held-out engines. Training labels are capped
 at the candidate's ``rul_cap``; held-out rows keep the uncapped true RUL (``rul_true``),
-known because training trajectories run to failure.
+known because training trajectories run to failure. With the subpopulation-probability block on,
+the D35 labels its classifier is trained against are re-derived on the inner-training engines
+alone, so no held-out or inner-validation trajectory shapes them.
 """
 
 from __future__ import annotations
@@ -23,7 +25,8 @@ import numpy.typing as npt
 import pandas as pd
 from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 
-from turbofan.config import MODEL_SENSORS, PARAMS
+from turbofan.analysis.subpopulation import subpopulation_labels
+from turbofan.config import FEATURE_BLOCKS, MODEL_SENSORS, PARAMS
 from turbofan.features.engineering import add_features
 
 __all__ = ["Fold", "FoldData", "make_folds", "prepare_fold", "true_rul"]
@@ -109,7 +112,9 @@ def prepare_fold(
     d = train.copy()
     d["rul_true"] = true_rul(d)
     d["rul"] = d["rul_true"].clip(upper=rul_cap)
-    feat_tr, stats = add_features(d[d["unit"].isin(fold.train_units)], sensors, dataset)
+    train_rows = d[d["unit"].isin(fold.train_units)]
+    labels = subpopulation_labels(train_rows, dataset) if FEATURE_BLOCKS.subpop_prob else None
+    feat_tr, stats = add_features(train_rows, sensors, dataset, subpop_labels=labels)
     feat_va, _ = add_features(d[d["unit"].isin(fold.val_units)], sensors, dataset, stats=stats)
     feat_te, _ = add_features(d[d["unit"].isin(fold.test_units)], sensors, dataset, stats=stats)
     return FoldData(fold=fold, feat_tr=feat_tr, feat_va=feat_va, feat_te=feat_te, stats=stats)

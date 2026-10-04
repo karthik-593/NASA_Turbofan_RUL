@@ -14,7 +14,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from turbofan.config import FEAT_COLS, SENSOR_N_COLS, SEQ_LEN
+from turbofan.config import FEAT_COLS, FEATURE_BLOCKS, SENSOR_N_COLS, SEQ_LEN
 from turbofan.models.lstm_model import make_last_windows, make_sequences
 
 __all__ = [
@@ -28,6 +28,14 @@ __all__ = [
 F64 = npt.NDArray[np.float64]
 
 
+def _sequence_ready() -> None:
+    if FEATURE_BLOCKS.subpop_prob:
+        raise ValueError(
+            "the subpopulation-probability block is missing before its cycle, which an LSTM "
+            "channel cannot carry — it is an XGBoost-only block"
+        )
+
+
 def fit_candidate(model: Any, kind: str, feat_tr: pd.DataFrame, feat_va: pd.DataFrame) -> Any:
     """Fit on ``feat_tr``; ``feat_va`` only for early stopping. Targets = the ``rul`` column
     (already capped at the candidate's rul_cap)."""
@@ -39,6 +47,7 @@ def fit_candidate(model: Any, kind: str, feat_tr: pd.DataFrame, feat_va: pd.Data
             feat_va["rul"].to_numpy(),
         )
     elif kind == "sequence":
+        _sequence_ready()
         X_tr, y_tr = make_sequences(feat_tr, SENSOR_N_COLS, SEQ_LEN)
         X_va, y_va = make_sequences(feat_va, SENSOR_N_COLS, SEQ_LEN)
         model.fit(X_tr, y_tr, X_va, y_va)
@@ -72,6 +81,7 @@ def refit_candidate(model: Any, kind: str, feat_all: pd.DataFrame, budget: int |
     if kind == "flat":
         X, y = feat_all[FEAT_COLS], feat_all["rul"].to_numpy()
     elif kind == "sequence":
+        _sequence_ready()
         X, y = make_sequences(feat_all, SENSOR_N_COLS, SEQ_LEN)
     else:
         raise ValueError(f"unknown candidate kind {kind!r}")

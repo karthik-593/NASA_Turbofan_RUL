@@ -1,4 +1,5 @@
-"""Optional feature blocks of Stage A3 (D51): health index, regime one-hot, extra sensors."""
+"""Optional feature blocks (D51): health index, regime one-hot, extra sensors (Stage A3);
+baseline deviation and subpopulation probability (post-Stage-A addendum)."""
 
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from turbofan.config import HI_COLS, KEEP, FeatureBlocks
+from turbofan.config import HI_COLS, KEEP, SUBPOP_COL, FeatureBlocks, baseline_cols
 from turbofan.features.engineering import FeatureError, add_features
 
 CONSISTENT = FeatureBlocks(health_index="consistent")
@@ -137,12 +138,18 @@ def _config_under(tmp_path: Path, features: dict[str, object], dataset: str = "F
 
 class TestConfig:
     def test_columns_follow_the_blocks(self, tmp_path: Path) -> None:
-        # 14 base sensors + s6 = 15 sensors x 3 = 45, + 3 HI columns, + 6 regime indicators
+        # 14 base sensors + s6 = 15 sensors x 3 = 45, + 3 HI columns, + 6 regime indicators;
+        # LSTM channels: 15 sensors + the HI score + 6 regime indicators
         got = _config_under(
             tmp_path,
             {"extra_sensors": ["s6"], "health_index": "pooled", "regime_onehot": True},
         )
-        assert got == "54 21 s6 True"
+        assert got == "54 22 s6 True"
+
+    def test_baseline_and_subpop_columns(self, tmp_path: Path) -> None:
+        # flat: 42 + 28 baseline + 1 probability; LSTM: 14 + 28 (never the probability)
+        got = _config_under(tmp_path, {"baseline": True, "subpop_prob": True}, "FD003")
+        assert got == "71 42 s21 True"
 
     def test_extra_sensor_must_come_from_the_datasets_pool(self, tmp_path: Path) -> None:
         assert "candidate_pool" in _config_under(tmp_path, {"extra_sensors": ["s10"]}, "FD001")
@@ -161,3 +168,91 @@ def test_bundles_refuse_feature_blocks(monkeypatch: pytest.MonkeyPatch, tmp_path
     monkeypatch.setattr(bundle.cfg, "FEATURE_BLOCKS", FeatureBlocks(regime_onehot=True))
     with pytest.raises(NotImplementedError, match="feature blocks"):
         bundle.save_bundle(tmp_path, "FD002", "xgboost", "v", object(), {}, seed=1, metrics={})
+
+
+BASELINE = FeatureBlocks(baseline=True, baseline_cycles=10)
+SUBPOP = FeatureBlocks(subpop_prob=True, subpop_prob_cycles=10, subpop_prob_inner_folds=2)
+
+
+def _labels(df: pd.DataFrame) -> pd.Series:
+    units = np.sort(df["unit"].unique())
+    return pd.Series((units % 2 == 0).astype(int), index=units)
+
+
+def _two_groups(n_units: int = 12, seed: int = 0) -> pd.DataFrame:
+    """Even engines start every sensor higher: the group shows in the early cycles."""
+    df = _engines(n_units, seed)
+    shift = np.where(df["unit"] % 2 == 0, 0.45, 0.0)
+    for i in range(1, 22):
+        df[f"s{i}"] += shift
+    return df
+
+
+class TestBaseline:
+    def test_expanding_mean_then_fixed_and_dev_against_rolling_mean(self) -> None:
+        out, _ = add_features(_engines(), KEEP, "FD001", blocks=BASELINE)
+        e = out[out["unit"] == 3].sort_values("cycle")
+        z = e["s2_n"].to_numpy()
+        expected = np.array([z[: min(i + 1, 10)].mean() for i in range(len(z))])
+        np.testing.assert_allclose(e["s2_base"].to_numpy(), expected, rtol=0, atol=1e-12)
+        np.testing.assert_allclose(e["s2_dev"], e["s2_mean"] - e["s2_base"], rtol=0, atol=1e-12)
+        assert set(baseline_cols(KEEP)) <= set(out.columns)
+
+    def test_causal_future_rows_do_not_change_past_values(self) -> None:
+        df = _engines()
+        full, st = add_features(df, KEEP, "FD001", blocks=BASELINE)
+        cut, _ = add_features(df[df["cycle"] <= 25], KEEP, "FD001", stats=st, blocks=BASELINE)
+        cols = baseline_cols(KEEP)
+        past = full[full["cycle"] <= 25].sort_values(["unit", "cycle"])
+        np.testing.assert_allclose(
+            past[cols].to_numpy(), cut.sort_values(["unit", "cycle"])[cols].to_numpy()
+        )
+
+    def test_a_history_not_starting_at_cycle_one_raises(self) -> None:
+        df = _engines()
+        _, st = add_features(df, KEEP, "FD001", blocks=BASELINE)
+        with pytest.raises(FeatureError, match="from cycle 1"):
+            add_features(df[df["cycle"] > 5], KEEP, "FD001", stats=st, blocks=BASELINE)
+
+
+class TestSubpopProb:
+    def test_missing_before_its_cycle_and_a_probability_after(self) -> None:
+        df = _two_groups()
+        out, _ = add_features(df, KEEP, "FD001", blocks=SUBPOP, subpop_labels=_labels(df))
+        early = out["cycle"] < 10
+        assert out.loc[early, SUBPOP_COL].isna().all()
+        p = out.loc[~early, SUBPOP_COL]
+        assert p.notna().all() and p.between(0, 1).all()
+        # constant within an engine from the cycle it becomes available
+        assert (out[~early].groupby("unit")[SUBPOP_COL].nunique() == 1).all()
+
+    def test_held_out_engines_use_the_full_fit_training_engines_are_cross_fitted(self) -> None:
+        df = _two_groups(16)
+        train, held = df[df["unit"] <= 12], df[df["unit"] > 12]
+        out_tr, st = add_features(train, KEEP, "FD001", blocks=SUBPOP, subpop_labels=_labels(train))
+        out_te, _ = add_features(held, KEEP, "FD001", stats=st, blocks=SUBPOP)
+        p = out_te[out_te["cycle"] >= 10].groupby("unit")[SUBPOP_COL].first()
+        assert (p[p.index % 2 == 0] > 0.5).all() and (p[p.index % 2 == 1] < 0.5).all()
+        # a training engine's own value is out-of-fold, not the full fit's in-sample score
+        tr_p = out_tr[out_tr["cycle"] >= 10].groupby("unit")[SUBPOP_COL].first()
+        refit, _ = add_features(train, KEEP, "FD001", stats=st, blocks=SUBPOP)
+        in_sample = refit[refit["cycle"] >= 10].groupby("unit")[SUBPOP_COL].first()
+        assert not np.allclose(tr_p.to_numpy(), in_sample.to_numpy())
+
+    def test_needs_labels_and_a_matching_state(self) -> None:
+        df = _two_groups()
+        with pytest.raises(FeatureError, match="needs subpop_labels"):
+            add_features(df, KEEP, "FD001", blocks=SUBPOP)
+        _, st = add_features(df, KEEP, "FD001", blocks=SUBPOP, subpop_labels=_labels(df))
+        with pytest.raises(FeatureError, match="none was requested"):
+            add_features(df, KEEP, "FD001", stats=st)
+        _, base_st = add_features(df, KEEP, "FD001")
+        with pytest.raises(FeatureError, match="lacks the fitted subpopulation"):
+            add_features(df, KEEP, "FD001", stats=base_st, blocks=SUBPOP)
+
+    def test_sequence_models_refuse_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import turbofan.evaluation.fitting as fitting
+
+        monkeypatch.setattr(fitting, "FEATURE_BLOCKS", SUBPOP)
+        with pytest.raises(ValueError, match="XGBoost-only"):
+            fitting.fit_candidate(object(), "sequence", pd.DataFrame(), pd.DataFrame())

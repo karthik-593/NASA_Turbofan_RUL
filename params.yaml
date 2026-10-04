@@ -51,6 +51,16 @@ features:
   hi_consistent_share: 0.9    # audit §E rule: a sensor is direction-consistent if >= this share
                               # of engines share the majority sign of rho(z, time to failure)
   regime_onehot: false        # one indicator column per fitted regime (multi-regime datasets)
+  baseline: false             # A5a: <s>_base = mean z over cycles 1..min(t, baseline_cycles) and
+                              # <s>_dev = <s>_mean - <s>_base; needs each engine from cycle 1
+  baseline_cycles: 30
+  subpop_prob: false          # A5b: P(D35 subpopulation 1) from the first subpop_prob_cycles
+                              # cycles (label re-derived on the fold's training engines; A4
+                              # classifier); NaN before that cycle; XGBoost only
+  subpop_prob_cycles: 30
+  subpop_prob_c: 1.0          # logistic-regression C (as A4's selection.identifiability)
+  subpop_prob_inner_folds: 5  # cross-fitting of the training engines' own probability
+  subpop_prob_seed: 0
 
 # -- models (D20-D22) -------------------------------------------------------------------
 models:

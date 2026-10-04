@@ -9,12 +9,24 @@ the per-regime normalization of FD002/FD004 (D03, D04a/b). Normalization state i
 the training engines and reused on val/test/serving by passing the returned `stats` back in.
 All operations are right-aligned (no future leakage) and computed per engine.
 
-Optional blocks (``params.yaml`` ``features``, D51 Stage A3), all fitted on the training engines
-only and stored in the returned state: a health index (``hi``, ``hi_mean``, ``hi_slope``) — PC1 of
-the within-regime z of the base sensors (``pooled``) or of the direction-consistent ones
-(``consistent``: >= ``hi_consistent_share`` of training engines share the majority sign of
-Spearman rho(z, uncapped time to failure)), oriented to rise toward failure — and one indicator
-column per fitted regime (``regime_onehot``). Extra sensors arrive through ``sensors``.
+Optional blocks (``params.yaml`` ``features``, D51 Stage A3 and the post-Stage-A addendum), all
+fitted on the training engines only and stored in the returned state:
+
+- a health index (``hi``, ``hi_mean``, ``hi_slope``) — PC1 of the within-regime z of the base
+  sensors (``pooled``) or of the direction-consistent ones (``consistent``: >=
+  ``hi_consistent_share`` of training engines share the majority sign of Spearman rho(z, uncapped
+  time to failure)), oriented to rise toward failure;
+- one indicator column per fitted regime (``regime_onehot``);
+- the baseline deviation (``baseline``): per sensor, ``<s>_base`` = the mean z over the engine's
+  cycles 1..min(t, ``baseline_cycles``) and ``<s>_dev`` = ``<s>_mean`` - ``<s>_base`` — causal,
+  no fitted state beyond the normalization;
+- the subpopulation probability (``subpop_prob``): a logistic regression on the mean and OLS slope
+  of each base sensor's z over cycles 1..``subpop_prob_cycles``, fitted on the training engines
+  against D35 labels the caller derives on those same engines (``subpop_labels``); the training
+  engines' own value is cross-fitted. ``subpop_p`` is missing (NaN) before that cycle.
+
+The last two read an engine's history from its first cycle, so each engine must start at cycle 1
+(a truncated history raises). Extra sensors arrive through ``sensors``.
 """
 
 from __future__ import annotations
@@ -26,6 +38,9 @@ import numpy.typing as npt
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
+from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from turbofan.config import (
@@ -36,8 +51,10 @@ from turbofan.config import (
     OP_COLS,
     REGIME_KMEANS_N_INIT,
     REGIME_KMEANS_SEED,
+    SUBPOP_COL,
     WINDOW,
     FeatureBlocks,
+    baseline_cols,
     regime_onehot_cols,
 )
 from turbofan.features.envelope import fit_envelope
@@ -217,6 +234,59 @@ def _rolling(g: Any, col: str, window: int) -> tuple[pd.Series[float], pd.Series
     return mean, pd.Series(slope, index=d.index)
 
 
+def _require_history_from_cycle_one(d: pd.DataFrame, block: str) -> None:
+    first = d.groupby("unit")["cycle"].min()
+    late = first[first != 1]
+    if len(late):
+        raise FeatureError(
+            f"the {block} block reads each engine's history from cycle 1; engines "
+            f"{late.index.tolist()[:10]} start later (a truncated history would shift it)"
+        )
+
+
+def _early_summary(d: pd.DataFrame, n: int) -> pd.DataFrame:
+    """Per engine with >= n cycles (index = unit): the mean and OLS slope of each base sensor's
+    within-regime z over cycles 1..n — the A4 description (``analysis.identifiability``)."""
+    first = d[d["cycle"] <= n]
+    full = first.groupby("unit")["cycle"].count()
+    first = first[first["unit"].isin(full[full == n].index)]
+    t = first["cycle"].to_numpy(float) - (n + 1) / 2.0
+    tt = float(np.sum((np.arange(1, n + 1) - (n + 1) / 2.0) ** 2))
+    g = first.groupby("unit")
+    cols: dict[str, pd.Series[float]] = {}
+    for s in KEEP:
+        cols[f"{s}_early_mean"] = g[f"{s}_n"].mean()
+        cols[f"{s}_early_slope"] = (first[f"{s}_n"] * t).groupby(first["unit"]).sum() / tt
+    return pd.DataFrame(cols)
+
+
+def _subpop_classifier(blocks: FeatureBlocks) -> Pipeline:
+    return make_pipeline(
+        StandardScaler(), LogisticRegression(C=blocks.subpop_prob_c, max_iter=1000)
+    )
+
+
+def _fit_subpop(
+    x: pd.DataFrame, labels: pd.Series[int] | None, blocks: FeatureBlocks
+) -> tuple[Pipeline, pd.Series[float]]:
+    """The classifier on all training engines, and each training engine's cross-fitted
+    probability (inner stratified folds: the classifier never scores an engine it saw)."""
+    if labels is None:
+        raise FeatureError("fitting the subpopulation-probability block needs subpop_labels")
+    y = labels.reindex(x.index)
+    if y.isna().any():
+        raise FeatureError(f"no subpopulation label for engines {y[y.isna()].index.tolist()}")
+    y = y.astype(int)
+    if y.nunique() != 2:
+        raise FeatureError("the training engines hold one subpopulation only")
+    inner = StratifiedKFold(
+        n_splits=blocks.subpop_prob_inner_folds, shuffle=True, random_state=blocks.subpop_prob_seed
+    )
+    oof = cross_val_predict(_subpop_classifier(blocks), x, y, cv=inner, method="predict_proba")
+    clf = _subpop_classifier(blocks).fit(x, y)
+    return clf, pd.Series(oof[:, 1], index=x.index)
+
+
 def add_features(
     d: pd.DataFrame,
     sensors: list[str],
@@ -224,11 +294,14 @@ def add_features(
     window: int = WINDOW,
     stats: dict[str, Any] | None = None,
     blocks: FeatureBlocks = FEATURE_BLOCKS,
+    subpop_labels: pd.Series[int] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """3 features per sensor: normalized value, rolling mean, rolling slope; plus the optional
     blocks of ``blocks``.
 
     stats=None on train (fits and returns stats); pass the returned stats on val/test.
+    ``subpop_labels`` (index = unit): the D35 labels of the training engines, needed only to fit
+    the subpopulation-probability block.
     """
     _check_input(d, sensors)
     d = d.sort_values(["unit", "cycle"]).copy()
@@ -276,6 +349,38 @@ def add_features(
         onehot = regime_onehot_cols(stats["n_regimes"])
         for r, c in enumerate(onehot):
             d[c] = (labels == r).astype(float)
+    base_cols: list[str] = []
+    if blocks.baseline:
+        _require_history_from_cycle_one(d, "baseline")
+        early = (d["cycle"] <= blocks.baseline_cycles).to_numpy()
+        z = d[[f"{s}_n" for s in sensors]].to_numpy(float)
+        z_early = pd.DataFrame(np.where(early[:, None], z, 0.0), index=d.index)
+        count = pd.Series(early.astype(float), index=d.index).groupby(d["unit"]).cumsum()
+        # count >= 1 on every row: each engine starts at cycle 1 (checked above)
+        base = z_early.groupby(d["unit"]).cumsum().to_numpy() / count.to_numpy()[:, None]
+        for j, s in enumerate(sensors):
+            d[f"{s}_base"] = base[:, j]
+            d[f"{s}_dev"] = d[f"{s}_mean"] - d[f"{s}_base"]
+        base_cols = baseline_cols(sensors)
+    if blocks.subpop_prob:
+        _require_history_from_cycle_one(d, "subpopulation-probability")
+        n = blocks.subpop_prob_cycles
+        x = _early_summary(d, n)
+        if fitting:
+            stats["subpop"], prob = _fit_subpop(x, subpop_labels, blocks)
+            stats["subpop_cycles"] = n
+        elif "subpop" not in stats:
+            raise FeatureError("feature state lacks the fitted subpopulation classifier")
+        elif stats["subpop_cycles"] != n:
+            raise FeatureError(f"state subpopulation block uses {stats['subpop_cycles']} cycles")
+        else:
+            prob = pd.Series(stats["subpop"].predict_proba(x)[:, 1], index=x.index)
+        later = d["cycle"].to_numpy() >= n
+        d[SUBPOP_COL] = np.where(later, d["unit"].map(prob).to_numpy(float), np.nan)
+        if np.isnan(d[SUBPOP_COL].to_numpy()[later]).any():
+            raise FeatureError("an engine past its first n cycles got no subpopulation probability")
+    elif "subpop" in stats:
+        raise FeatureError("feature state carries a subpopulation classifier; none was requested")
     # The one legitimate NaN: the slope needs two points, so it is undefined at each engine's
     # first cycle. Defined explicitly as 0 (no trend observed yet), the value the former
     # blanket fillna(0) gave it. Any other NaN is a bug and raises.
@@ -283,7 +388,7 @@ def add_features(
     slope_cols = [f"{s}_slope" for s in sensors] + (["hi_slope"] if hi_cols else [])
     d.loc[first_cycle, slope_cols] = 0.0
     out_cols = [f"{s}_{kind}" for kind in ("n", "mean", "slope") for s in sensors]
-    out_cols += hi_cols + onehot
+    out_cols += hi_cols + onehot + base_cols  # subpop_p: NaN before its cycle, checked above
     nan = d[out_cols].isna().sum()
     if nan.any():
         raise FeatureError(f"unexpected NaN in features: {nan[nan > 0].to_dict()}")

@@ -153,6 +153,12 @@ def sensor_n_cols(sensors: list[str]) -> list[str]:
 
 HEALTH_INDEX_MODES = ("none", "consistent", "pooled")
 HI_COLS = ["hi", "hi_mean", "hi_slope"]
+SUBPOP_COL = "subpop_p"
+
+
+def baseline_cols(sensors: list[str]) -> list[str]:
+    """The baseline-deviation block: per sensor, its early-life level and today's offset."""
+    return [f"{s}_base" for s in sensors] + [f"{s}_dev" for s in sensors]
 
 
 @dataclass(frozen=True)
@@ -163,10 +169,23 @@ class FeatureBlocks:
     health_index: str = "none"
     hi_consistent_share: float = 0.9
     regime_onehot: bool = False
+    baseline: bool = False
+    baseline_cycles: int = 30
+    subpop_prob: bool = False
+    subpop_prob_cycles: int = 30
+    subpop_prob_c: float = 1.0
+    subpop_prob_inner_folds: int = 5
+    subpop_prob_seed: int = 0
 
     @property
     def active(self) -> bool:
-        return bool(self.extra_sensors) or self.health_index != "none" or self.regime_onehot
+        return (
+            bool(self.extra_sensors)
+            or self.health_index != "none"
+            or self.regime_onehot
+            or self.baseline
+            or self.subpop_prob
+        )
 
 
 def _feature_blocks() -> FeatureBlocks:
@@ -178,7 +197,27 @@ def _feature_blocks() -> FeatureBlocks:
         raise ParamsError(f"params.yaml: features.health_index must be one of {HEALTH_INDEX_MODES}")
     if not 0.5 < share <= 1.0:
         raise ParamsError("params.yaml: features.hi_consistent_share must be in (0.5, 1]")
-    blocks = FeatureBlocks(tuple(extra), hi, share, onehot)
+    blocks = FeatureBlocks(
+        tuple(extra),
+        hi,
+        share,
+        onehot,
+        baseline=_get(PARAMS, "features.baseline", bool),
+        baseline_cycles=_get(PARAMS, "features.baseline_cycles", int),
+        subpop_prob=_get(PARAMS, "features.subpop_prob", bool),
+        subpop_prob_cycles=_get(PARAMS, "features.subpop_prob_cycles", int),
+        subpop_prob_c=float(_get(PARAMS, "features.subpop_prob_c", (int, float))),
+        subpop_prob_inner_folds=_get(PARAMS, "features.subpop_prob_inner_folds", int),
+        subpop_prob_seed=_get(PARAMS, "features.subpop_prob_seed", int),
+    )
+    if blocks.baseline_cycles < 1 or blocks.subpop_prob_cycles < 2:
+        raise ParamsError(
+            "params.yaml: features.baseline_cycles must be >= 1 and subpop_prob_cycles >= 2"
+        )
+    if blocks.subpop_prob_inner_folds < 2 or blocks.subpop_prob_c <= 0:
+        raise ParamsError(
+            "params.yaml: features.subpop_prob_inner_folds must be >= 2 and subpop_prob_c > 0"
+        )
     if blocks.extra_sensors or blocks.regime_onehot:
         ds = _get(PARAMS, "pipeline.dataset", str)
         if ds not in DATASETS:
@@ -206,10 +245,23 @@ _ONEHOT: list[str] = (
     if FEATURE_BLOCKS.regime_onehot
     else []
 )
+_HI_ON = FEATURE_BLOCKS.health_index != "none"
+_BASELINE: list[str] = baseline_cols(MODEL_SENSORS) if FEATURE_BLOCKS.baseline else []
+# Flat (XGBoost) features: every active block.
 FEAT_COLS: list[str] = (
-    feat_cols(MODEL_SENSORS) + (HI_COLS if FEATURE_BLOCKS.health_index != "none" else []) + _ONEHOT
+    feat_cols(MODEL_SENSORS)
+    + (HI_COLS if _HI_ON else [])
+    + _ONEHOT
+    + _BASELINE
+    + ([SUBPOP_COL] if FEATURE_BLOCKS.subpop_prob else [])
 )
-SENSOR_N_COLS: list[str] = sensor_n_cols(MODEL_SENSORS) + _ONEHOT
+# LSTM channels: the normalized sensors, the health-index score (the LSTM learns its own
+# smoothing, so not hi_mean / hi_slope), the baseline block and the regime indicators. The
+# subpopulation probability is missing before its cycle, which a channel cannot carry, so a
+# sequence model refuses that block (evaluation.fitting).
+SENSOR_N_COLS: list[str] = (
+    sensor_n_cols(MODEL_SENSORS) + (["hi"] if _HI_ON else []) + _BASELINE + _ONEHOT
+)
 
 
 def xgb_device() -> str:
