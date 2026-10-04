@@ -1,0 +1,461 @@
+{
+  "datasets": {
+    "FD001": {
+      "not_worse": true,
+      "comparisons": [
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD001/cap090",
+          "incumbent_tag": "A/FD001/cap125",
+          "metric": "urgent_rmse",
+          "estimate_challenger": 12.839729181138003,
+          "estimate_incumbent": 15.285951348077152,
+          "diff": -2.4462221669391493,
+          "diff_ci_lo": -3.3244902891187893,
+          "diff_ci_hi": -1.6145169477425505,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.71,
+          "wilcoxon_p": 6.103515625e-05,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 100,
+          "n_points": 59193
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD001/cap090",
+          "incumbent_tag": "A/FD001/cap125",
+          "metric": "critical_late_pct",
+          "estimate_challenger": 66.77333333333333,
+          "estimate_incumbent": 70.14666666666666,
+          "diff": -3.373333333333335,
+          "diff_ci_lo": -4.773666666666659,
+          "diff_ci_hi": -1.999666666666667,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.62,
+          "wilcoxon_p": 0.0017777457157059891,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 100,
+          "n_points": 59193
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD001/cap090",
+          "incumbent_tag": "A/FD001/cap125",
+          "metric": "urgent_late_pct",
+          "estimate_challenger": 63.2,
+          "estimate_incumbent": 63.906666666666666,
+          "diff": -0.7066666666666634,
+          "diff_ci_lo": -2.0136666666666683,
+          "diff_ci_hi": 0.4399999999999977,
+          "better": false,
+          "worse": false,
+          "share_engines_challenger_better": 0.44,
+          "wilcoxon_p": 0.4431391248234646,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 100,
+          "n_points": 59193
+        }
+      ],
+      "decisions": [
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 20.0,
+          "caught_challenger": 47.07017543859648,
+          "caught_incumbent": 46.98166460651009,
+          "diff": 0.0885108320863921,
+          "diff_ci_lo": -2.850881256501796,
+          "diff_ci_hi": 2.9991770203171417,
+          "n_engines": 100,
+          "boot_defined_share": 1.0
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 30.0,
+          "caught_challenger": 95.77619047619048,
+          "caught_incumbent": 95.50352112676056,
+          "diff": 0.2726693494299184,
+          "diff_ci_lo": -1.504277641791224,
+          "diff_ci_hi": 1.9631225312156932,
+          "n_engines": 100,
+          "boot_defined_share": 1.0
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 40.0,
+          "caught_challenger": 100.0,
+          "caught_incumbent": 100.0,
+          "diff": 0.0,
+          "diff_ci_lo": 0.0,
+          "diff_ci_hi": 0.0,
+          "n_engines": 100,
+          "boot_defined_share": 1.0
+        }
+      ],
+      "mlflow_parent_runs": {
+        "90": "b8dc2c92541f453cbcffd2904069a69c",
+        "125": "e0b2c4011b5945c7b0f1b3c287144dfa"
+      },
+      "overall_late_pct_info": {
+        "90": "28.7 [25.7, 32.4]",
+        "125": "40.0 [35.2, 44.5]"
+      }
+    },
+    "FD002": {
+      "not_worse": true,
+      "comparisons": [
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD002/cap090",
+          "incumbent_tag": "A/FD002/cap125",
+          "metric": "urgent_rmse",
+          "estimate_challenger": 15.329805631918763,
+          "estimate_incumbent": 18.684451222619185,
+          "diff": -3.3546455907004216,
+          "diff_ci_lo": -3.952410581832999,
+          "diff_ci_hi": -2.775010294580915,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.7576923076923077,
+          "wilcoxon_p": 6.103515625e-05,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 260,
+          "n_points": 154257
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD002/cap090",
+          "incumbent_tag": "A/FD002/cap125",
+          "metric": "critical_late_pct",
+          "estimate_challenger": 66.49230769230769,
+          "estimate_incumbent": 68.98461538461538,
+          "diff": -2.4923076923076906,
+          "diff_ci_lo": -3.2257692307692296,
+          "diff_ci_hi": -1.7691025641025548,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.6461538461538462,
+          "wilcoxon_p": 0.0031127003248403074,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 260,
+          "n_points": 154257
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD002/cap090",
+          "incumbent_tag": "A/FD002/cap125",
+          "metric": "urgent_late_pct",
+          "estimate_challenger": 69.05641025641026,
+          "estimate_incumbent": 69.16410256410256,
+          "diff": -0.10769230769230376,
+          "diff_ci_lo": -0.7592307692307665,
+          "diff_ci_hi": 0.5180769230769174,
+          "better": false,
+          "worse": false,
+          "share_engines_challenger_better": 0.35,
+          "wilcoxon_p": 0.5718922635979182,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 260,
+          "n_points": 154257
+        }
+      ],
+      "decisions": [
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 20.0,
+          "caught_challenger": 48.080125938952236,
+          "caught_incumbent": 46.59213911809068,
+          "diff": 1.4879868208615576,
+          "diff_ci_lo": -0.33402990672998645,
+          "diff_ci_hi": 3.3471678771080806,
+          "n_engines": 260,
+          "boot_defined_share": 1.0
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 30.0,
+          "caught_challenger": 92.26752796489288,
+          "caught_incumbent": 90.37134811686026,
+          "diff": 1.8961798480326166,
+          "diff_ci_lo": 0.5586750050741379,
+          "diff_ci_hi": 3.4622078523354736,
+          "n_engines": 260,
+          "boot_defined_share": 1.0
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 40.0,
+          "caught_challenger": 99.41328418294263,
+          "caught_incumbent": 99.24385639902881,
+          "diff": 0.16942778391381808,
+          "diff_ci_lo": -0.5917982424726996,
+          "diff_ci_hi": 1.017572009223924,
+          "n_engines": 260,
+          "boot_defined_share": 1.0
+        }
+      ],
+      "mlflow_parent_runs": {
+        "90": "3b26ba22b28a4189a2ccd145c2eb78f8",
+        "125": "89171b35cba74600ba8b81e3dd11c5a9"
+      },
+      "overall_late_pct_info": {
+        "90": "29.2 [27.1, 31.4]",
+        "125": "40.6 [37.7, 43.7]"
+      }
+    },
+    "FD003": {
+      "not_worse": true,
+      "comparisons": [
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD003/cap090",
+          "incumbent_tag": "A/FD003/cap125",
+          "metric": "urgent_rmse",
+          "estimate_challenger": 11.620865984098549,
+          "estimate_incumbent": 13.737438676677279,
+          "diff": -2.11657269257873,
+          "diff_ci_lo": -3.0867531923584397,
+          "diff_ci_hi": -1.1761427584683382,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.69,
+          "wilcoxon_p": 6.103515625e-05,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 100,
+          "n_points": 71460
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD003/cap090",
+          "incumbent_tag": "A/FD003/cap125",
+          "metric": "critical_late_pct",
+          "estimate_challenger": 66.01333333333334,
+          "estimate_incumbent": 69.64,
+          "diff": -3.626666666666665,
+          "diff_ci_lo": -5.0536666666666745,
+          "diff_ci_hi": -2.212666666666672,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.64,
+          "wilcoxon_p": 0.0042724609375,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 100,
+          "n_points": 71460
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD003/cap090",
+          "incumbent_tag": "A/FD003/cap125",
+          "metric": "urgent_late_pct",
+          "estimate_challenger": 63.653333333333336,
+          "estimate_incumbent": 65.72,
+          "diff": -2.066666666666663,
+          "diff_ci_lo": -3.8000000000000043,
+          "diff_ci_hi": -0.51933333333333,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.48,
+          "wilcoxon_p": 0.018566712279734197,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 100,
+          "n_points": 71460
+        }
+      ],
+      "decisions": [
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 20.0,
+          "caught_challenger": 47.737029140014215,
+          "caught_incumbent": 47.211176786673825,
+          "diff": 0.5258523533403903,
+          "diff_ci_lo": -1.5940292308374875,
+          "diff_ci_hi": 2.880570795145474,
+          "n_engines": 100,
+          "boot_defined_share": 1.0
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 30.0,
+          "caught_challenger": 94.73755568467945,
+          "caught_incumbent": 94.74145556895857,
+          "diff": -0.0038998842791215793,
+          "diff_ci_lo": -1.4120870000982289,
+          "diff_ci_hi": 1.5551497577263067,
+          "n_engines": 100,
+          "boot_defined_share": 1.0
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 40.0,
+          "caught_challenger": 99.95956678700361,
+          "caught_incumbent": 99.02360203340595,
+          "diff": 0.9359647535976592,
+          "diff_ci_lo": -0.0808046810423402,
+          "diff_ci_hi": 2.140379901217589,
+          "n_engines": 100,
+          "boot_defined_share": 1.0
+        }
+      ],
+      "mlflow_parent_runs": {
+        "90": "10b30207abce42db93139a320566bd02",
+        "125": "2e16401b1de34d7b95769b7a81ed50e5"
+      },
+      "overall_late_pct_info": {
+        "90": "23.9 [20.8, 27.4]",
+        "125": "33.9 [29.7, 38.4]"
+      }
+    },
+    "FD004": {
+      "not_worse": true,
+      "comparisons": [
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD004/cap090",
+          "incumbent_tag": "A/FD004/cap125",
+          "metric": "urgent_rmse",
+          "estimate_challenger": 14.102486553305173,
+          "estimate_incumbent": 16.85012528315912,
+          "diff": -2.7476387298539464,
+          "diff_ci_lo": -3.3680926245215335,
+          "diff_ci_hi": -2.1629025723486297,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.7469879518072289,
+          "wilcoxon_p": 6.103515625e-05,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 249,
+          "n_points": 177024
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD004/cap090",
+          "incumbent_tag": "A/FD004/cap125",
+          "metric": "critical_late_pct",
+          "estimate_challenger": 73.18875502008032,
+          "estimate_incumbent": 75.42168674698796,
+          "diff": -2.232931726907637,
+          "diff_ci_lo": -2.988085676037491,
+          "diff_ci_hi": -1.5472556894243623,
+          "better": true,
+          "worse": false,
+          "share_engines_challenger_better": 0.5983935742971888,
+          "wilcoxon_p": 0.00537109375,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 249,
+          "n_points": 177024
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "challenger_tag": "A/FD004/cap090",
+          "incumbent_tag": "A/FD004/cap125",
+          "metric": "urgent_late_pct",
+          "estimate_challenger": 69.36010709504686,
+          "estimate_incumbent": 69.6599732262383,
+          "diff": -0.2998661311914361,
+          "diff_ci_lo": -0.9638554216867451,
+          "diff_ci_hi": 0.34297188755020447,
+          "better": false,
+          "worse": false,
+          "share_engines_challenger_better": 0.37751004016064255,
+          "wilcoxon_p": 0.7981933484818879,
+          "wilcoxon_n_splits": 15,
+          "n_engines": 249,
+          "n_points": 177024
+        }
+      ],
+      "decisions": [
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 20.0,
+          "caught_challenger": 36.190925254635076,
+          "caught_incumbent": 36.632554028073606,
+          "diff": -0.4416287734385307,
+          "diff_ci_lo": -2.0036091455266276,
+          "diff_ci_hi": 1.468183667050568,
+          "n_engines": 249,
+          "boot_defined_share": 0.999
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 30.0,
+          "caught_challenger": 86.73041371836553,
+          "caught_incumbent": 85.00541098316134,
+          "diff": 1.7250027352041855,
+          "diff_ci_lo": 0.2507513107976827,
+          "diff_ci_hi": 3.1483022451377196,
+          "n_engines": 249,
+          "boot_defined_share": 1.0
+        },
+        {
+          "substage": "A1-check",
+          "challenger": "cap 90",
+          "incumbent": "cap 125",
+          "budget": 40.0,
+          "caught_challenger": 99.08737481678754,
+          "caught_incumbent": 99.03160214898662,
+          "diff": 0.05577266780092316,
+          "diff_ci_lo": -0.46041991849078445,
+          "diff_ci_hi": 0.5893651028642934,
+          "n_engines": 249,
+          "boot_defined_share": 1.0
+        }
+      ],
+      "mlflow_parent_runs": {
+        "90": "7c35f127c0034bdfa5d5c31f365772be",
+        "125": "911d428cc5db45b8a9750579f42eeace"
+      },
+      "overall_late_pct_info": {
+        "90": "25.5 [23.6, 27.5]",
+        "125": "35.6 [33.1, 38.4]"
+      }
+    }
+  },
+  "confirmed": true
+}
