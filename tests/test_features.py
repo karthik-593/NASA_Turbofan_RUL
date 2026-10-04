@@ -12,7 +12,12 @@ import pandas as pd
 import pytest
 
 from turbofan.config import FEAT_COLS, KEEP, N_REGIMES
-from turbofan.features.engineering import FEATURE_STATE_KEYS, FeatureError, add_features
+from turbofan.features.engineering import (
+    FEATURE_STATE_KEYS,
+    FeatureError,
+    _trailing_slope,
+    add_features,
+)
 
 
 def _make_nb_df(n_units: int = 3, cycles_per_unit: int = 40, seed: int = 0) -> pd.DataFrame:
@@ -187,3 +192,32 @@ class TestNoSilentFallbacks:
         stats["s_mean"]["s2"] = [0.0, 0.0]
         with pytest.raises(FeatureError, match="inconsistent with k = 1"):
             add_features(_make_nb_df(seed=1), KEEP, "FD001", stats=stats)
+
+
+class TestClosedFormSlope:
+    """D52: the rolling slope is the least-squares slope np.polyfit gave, without the per-window
+    Python call."""
+
+    @pytest.mark.parametrize("window", [2, 5, 20, 45])
+    def test_matches_polyfit_on_engines_shorter_and_longer_than_the_window(
+        self, window: int
+    ) -> None:
+        rng = np.random.default_rng(window)
+        lengths = [1, 3, window - 1, window, window + 7, 3 * window]
+        unit = np.repeat(np.arange(len(lengths)), [max(n, 1) for n in lengths])
+        y = rng.normal(size=(len(unit), 3)).cumsum(axis=0)
+        pos = pd.Series(unit).groupby(unit).cumcount().to_numpy()
+        got = _trailing_slope(y, pos, window)
+        for u in np.unique(unit):
+            rows = np.flatnonzero(unit == u)
+            for j, r in enumerate(rows):
+                w = y[rows[max(0, j - window + 1) : j + 1]]
+                if len(w) < 2:
+                    assert np.isnan(got[r]).all()
+                else:
+                    ref = np.polyfit(np.arange(len(w)), w, 1)[0]
+                    np.testing.assert_allclose(got[r], ref, rtol=0, atol=1e-12)
+
+    def test_window_below_two_raises(self) -> None:
+        with pytest.raises(FeatureError, match="window >= 2"):
+            _trailing_slope(np.zeros((4, 1)), np.arange(4), 1)

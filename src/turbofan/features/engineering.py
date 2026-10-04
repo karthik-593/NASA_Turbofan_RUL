@@ -50,6 +50,8 @@ FEATURE_STATE_KEYS = ("n_regimes", "sensors", "op_sc", "km", "s_mean", "s_std", 
 # A sample std needs two rows; a regime with fewer cannot be normalized (D06, rule 8).
 _MIN_REGIME_ROWS = 2
 
+F64 = npt.NDArray[np.float64]
+
 
 class FeatureError(ValueError):
     """Input or fitted state that add_features refuses to paper over (rule 8)."""
@@ -174,14 +176,45 @@ def _fit_health_index(d: pd.DataFrame, blocks: FeatureBlocks) -> dict[str, Any]:
     }
 
 
+_SLOPE_CHUNK = 4096  # rows per batch of full windows (bounds the gathered window memory)
+
+
+def _trailing_slope(y: F64, pos: npt.NDArray[np.intp], window: int) -> F64:
+    """OLS slope of each column of ``y`` over the trailing ``window`` rows of the same engine.
+
+    ``y``: (n, k), rows sorted by unit then cycle; ``pos``: each row's 0-based position within
+    its engine. A row with m = min(pos + 1, window) >= 2 points gets slope
+    sum((t - mean t) * y) / sum((t - mean t)^2) over t = 0..m-1 — the least-squares slope
+    ``np.polyfit(t, y, 1)[0]`` computed (the former implementation; equal to it to ~1e-13, D52)
+    — and NaN at m = 1. The windows of full length are gathered from one sliding view, the
+    shorter ones (the first window - 1 rows of each engine) per length."""
+    out = np.full(y.shape, np.nan)
+
+    def fit(win: F64, m: int) -> F64:  # win: (r, m, k), oldest row first
+        t = np.arange(m, dtype=float)
+        t -= t.mean()
+        res: F64 = np.einsum("rmk,m->rk", win, t) / float(t @ t)
+        return res
+
+    if window < 2:
+        raise FeatureError(f"a rolling slope needs window >= 2, got {window}")
+    full = np.flatnonzero(pos >= window - 1)
+    for c in range(0, len(full), _SLOPE_CHUNK):
+        rows = full[c : c + _SLOPE_CHUNK]
+        idx = rows[:, None] - np.arange(window - 1, -1, -1)
+        out[rows] = fit(y[idx], window)
+    for m in range(2, window):
+        rows = np.flatnonzero(pos == m - 1)
+        if rows.size:
+            out[rows] = fit(y[rows[:, None] - np.arange(m - 1, -1, -1)], m)
+    return out
+
+
 def _rolling(g: Any, col: str, window: int) -> tuple[pd.Series[float], pd.Series[float]]:
     mean = g[col].transform(lambda x: x.rolling(window, min_periods=1).mean())
-    slope = g[col].transform(
-        lambda x: x.rolling(window, min_periods=2).apply(
-            lambda w: np.polyfit(np.arange(len(w)), w, 1)[0], raw=True
-        )
-    )
-    return mean, slope
+    d = g.obj
+    slope = _trailing_slope(d[[col]].to_numpy(float), g.cumcount().to_numpy(), window)[:, 0]
+    return mean, pd.Series(slope, index=d.index)
 
 
 def add_features(
