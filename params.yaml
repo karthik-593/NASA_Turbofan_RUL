@@ -41,7 +41,8 @@ regime_kmeans:
 # -- features (D07, D08, D10) -----------------------------------------------------------
 window: 20                    # rolling mean/slope window (D08)
 seq_len: 30                   # LSTM sequence length (D10)
-seq_len_grid: [20, 30, 45]    # consumed later
+seq_len_grid: [20, 30, 45, 60]  # Stage B1 grid (incumbent: seq_len); 60 added in the
+                              # post-Stage-A addendum (reports/model_selection.md)
 
 # -- feature blocks (D51, Stage A3): the defaults are the base feature set ------------------
 features:
@@ -161,6 +162,11 @@ final_eval:
 selection:                    # D51, pre-registered in reports/model_selection.md §0
   seed: 42                    # Stage A/B screening seed
   window_grid: [20, 30, 45]   # A2 (incumbent: window); A1 uses rul_cap_grid, B1 seq_len_grid
+  window_ext_grid: [60, 90]   # A2-ext (addendum), vs the A2 winner
+  a5b_datasets: [FD003, FD004]  # A5b scope (addendum): A4 strong from 30 cycles there
+  a5b_gate_auc: 0.99          # A5b runs only if the A4 re-run gives AUC >= this at N = a5b
+                              # n_cycles (features.subpop_prob_cycles), CI lower bound >=
+                              # identifiability.auc_strong_lower, shuffled-label CI holding 0.5
   extra_sensors:              # A3 sensors+: audit §E "informative, not in sensors.use"
     FD001: [s6]
     FD002: [s6, s10, s16]
@@ -170,6 +176,30 @@ selection:                    # D51, pre-registered in reports/model_selection.m
     n_cycles: [30, 50, 100]
     logreg_c: 1.0
     auc_strong_lower: 0.80    # "strong" = AUC 95% CI lower bound >= this
+tuning:                       # Stage C (D51 addendum): Optuna TPE on the repeat-1 folds
+  sampler_seed: 42
+  n_boot: 200                 # bootstrap replicates of a trial run (its CI is not used)
+  xgboost:                    # keys under models.xgboost.params
+    n_trials: 30
+    fixed: {n_estimators: 2000}   # early stopping (50 rounds) decides the rounds
+    space:
+      max_depth: {type: int, low: 3, high: 10}
+      learning_rate: {type: float, low: 0.01, high: 0.3, log: true}
+      subsample: {type: float, low: 0.5, high: 1.0}
+      colsample_bytree: {type: float, low: 0.5, high: 1.0}
+      min_child_weight: {type: float, low: 1.0, high: 50.0, log: true}
+      reg_alpha: {type: float, low: 0.001, high: 10.0, log: true}
+      reg_lambda: {type: float, low: 0.001, high: 10.0, log: true}
+  lstm:                       # keys under models.lstm
+    n_trials: 20
+    fixed: {}
+    space:
+      hidden: {type: categorical, choices: [16, 32, 64, 128]}
+      layers: {type: int, low: 1, high: 3}
+      dropout: {type: float, low: 0.0, high: 0.5}
+      lr: {type: float, low: 0.0003, high: 0.003, log: true}
+      batch_size: {type: categorical, choices: [128, 256, 512]}
+      head_hidden: {type: categorical, choices: [8, 16, 32]}
 smoke:                        # `python -m turbofan.pipeline all --smoke`: isolated, minutes
   n_engines: 10               # training engines kept (balanced over subpopulations)
   max_folds: 1                # splits run (of overrides.cv.n_folds x n_repeats)

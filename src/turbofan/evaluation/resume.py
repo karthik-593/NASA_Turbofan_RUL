@@ -75,6 +75,7 @@ NOT_FIT_SECTIONS = (
     "release",
     "final_eval",
     "selection",
+    "tuning",
     "smoke",
 )
 PREDICTIONS_FILE = "predictions.parquet"

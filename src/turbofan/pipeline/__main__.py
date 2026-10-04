@@ -129,7 +129,7 @@ def write_smoke_spec(ctx: Any) -> None:
 
 def _select(argv: list[str]) -> None:
     ap = argparse.ArgumentParser(prog="python -m turbofan.pipeline select")
-    ap.add_argument("stage", choices=("A",))
+    ap.add_argument("stage", choices=("A", "A1check", "X", "B", "C", "D"))
     ap.add_argument(
         "--dataset", nargs="+", required=True, choices=("FD001", "FD002", "FD003", "FD004")
     )
