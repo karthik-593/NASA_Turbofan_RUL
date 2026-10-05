@@ -1,0 +1,38 @@
+dataset: FD004
+model: xgboost
+seed: 42
+rul_cap: 90
+locked: true
+status: locked
+window: 30
+seq_len: 30
+features:
+  health_index: consistent
+  regime_onehot: false
+  extra_sensors: []
+  baseline: false
+  subpop_prob: false
+model_params:
+  colsample_bytree: 0.5598513425870337
+  learning_rate: 0.01149828612220464
+  max_depth: 5
+  min_child_weight: 8.131067968289171
+  n_estimators: 2000
+  reg_alpha: 0.012676245305710085
+  reg_lambda: 0.7813413482446248
+  subsample: 0.5851844040992088
+evidence:
+  selection_tag: runs/FD004/xgboost/cap090_w030_hi_consistent_tuned-16c6c872_seeds-42-7-123-2024-99
+  critical_rmse: 5.725925463606932
+  critical_rmse_ci:
+  - 5.290621073031392
+  - 6.204181127658606
+  n_engines: 249
+  n_splits: 75
+  seeds:
+  - 42
+  - 7
+  - 123
+  - 2024
+  - 99
+  report: reports/selection/stage_D_FD004.md

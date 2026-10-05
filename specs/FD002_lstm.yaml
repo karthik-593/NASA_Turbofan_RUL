@@ -1,0 +1,30 @@
+dataset: FD002
+model: lstm
+seed: 42
+rul_cap: 90
+locked: false
+status: runner-up
+window: 45
+seq_len: 60
+features:
+  health_index: none
+  regime_onehot: false
+  extra_sensors: []
+  baseline: false
+  subpop_prob: false
+model_params: {}
+evidence:
+  selection_tag: runs/FD002/lstm/cap090_w045_L060_seeds-42-7-123-2024-99
+  critical_rmse: 3.9350096484333643
+  critical_rmse_ci:
+  - 3.7002767693204897
+  - 4.182986022475724
+  n_engines: 260
+  n_splits: 75
+  seeds:
+  - 42
+  - 7
+  - 123
+  - 2024
+  - 99
+  report: reports/selection/stage_D_FD002.md

@@ -1,0 +1,30 @@
+dataset: FD003
+model: xgboost
+seed: 42
+rul_cap: 90
+locked: true
+status: locked
+window: 45
+seq_len: 30
+features:
+  health_index: consistent
+  regime_onehot: false
+  extra_sensors: []
+  baseline: false
+  subpop_prob: false
+model_params: {}
+evidence:
+  selection_tag: runs/FD003/xgboost/cap090_w045_hi_consistent_seeds-42-7-123-2024-99
+  critical_rmse: 3.483780233715632
+  critical_rmse_ci:
+  - 3.055068343236656
+  - 4.007983372536365
+  n_engines: 100
+  n_splits: 75
+  seeds:
+  - 42
+  - 7
+  - 123
+  - 2024
+  - 99
+  report: reports/selection/stage_D_FD003.md

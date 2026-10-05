@@ -1,0 +1,36 @@
+dataset: FD001
+model: lstm
+seed: 42
+rul_cap: 90
+locked: false
+status: runner-up
+window: 45
+seq_len: 60
+features:
+  health_index: none
+  regime_onehot: false
+  extra_sensors: []
+  baseline: false
+  subpop_prob: false
+model_params:
+  batch_size: 128
+  dropout: 0.21597250932105788
+  head_hidden: 32
+  hidden: 128
+  layers: 2
+  lr: 0.0005866112598823575
+evidence:
+  selection_tag: runs/FD001/lstm/cap090_w045_L060_tuned-14fc99d1_seeds-42-7-123-2024-99
+  critical_rmse: 3.246451756737348
+  critical_rmse_ci:
+  - 2.967828893126683
+  - 3.5675487908288677
+  n_engines: 100
+  n_splits: 75
+  seeds:
+  - 42
+  - 7
+  - 123
+  - 2024
+  - 99
+  report: reports/selection/stage_D_FD001.md

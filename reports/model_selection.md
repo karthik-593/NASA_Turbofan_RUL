@@ -613,6 +613,91 @@ Each comparison uses 10 splits of the held-out engines (n = 100 / 260 / 100 / 24
 
 ---
 
+## Stage D — confirmation (5 seeds × 5 × 3 folds) and outcome
+
+Completed 2026-10-05. Full tables are in `reports/selection/stage_D_FD00x.md` / `.json`. The
+narrative and figures are in `notebooks/04_model_selection.ipynb`, and the specs in `specs/`.
+
+### Leave-one-out check of every adopted change
+
+Each change is tested as spec − (spec minus the change), on critical RMSE over 75 splits.
+
+| dataset | XGBoost changes kept | XGBoost dropped | LSTM changes kept | LSTM dropped |
+|---|---|---|---|---|
+| FD001 | cap 90, window 45, `hi_pooled`, tuning | — | cap 90, `seq_len` 60, tuning | — |
+| FD002 | cap 90, window 45, `hi_consistent` | — | cap 90, `seq_len` 60 | — |
+| FD003 | cap 90, window 45, `hi_consistent` | — | tuning | **cap 90** (cap check) |
+| FD004 | cap 90, window 30, `hi_consistent`, tuning | **regime one-hot** (−0.00 [−0.02, 0.01]) | cap 90 | — |
+
+- **Kept changes:** every kept change has a CI entirely below 0. Example:
+  - window on FD002: −1.59 [−1.94, −1.25];
+  - cap on FD004 XGBoost: −0.63 [−0.78, −0.48];
+  - health index on FD003: −0.34 [−0.52, −0.18].
+- **FD004 regime one-hot:** dropped by parsimony. It was the weakest screening adoption (Stage A
+  CI upper bound −0.01), and Stage D confirms it adds nothing. The FD004 XGBoost finalist is its
+  leave-one-out run without it (5 seeds).
+- **FD003 LSTM cap — a contradiction (rule 9, X08):**
+  - Cap 90 still beats 125 on critical RMSE (−0.24 [−0.34, −0.14]).
+  - But at 5 seeds it is **later**: critical-bucket late % +1.94 [0.62, 3.31] pp, urgent-bucket
+    late % +1.24 [0.18, 2.34] pp.
+  - The pre-registered cap criteria therefore drop it, and the FD003 LSTM finalist trains at cap
+    125.
+  - The A1-check's cap-90 confirmation (XGBoost, one seed) does not transfer to every model.
+  - For XGBoost, the cap criteria hold at 5 seeds on every dataset.
+
+### Finalists and locking
+
+| dataset | XGBoost finalist, critical RMSE [95% CI] | LSTM finalist | Δ LSTM − XGBoost [95% CI] | decision check (Δ caught pp, LSTM − XGBoost; 20 / 30 / 40) | outcome |
+|---|---|---|---|---|---|
+| FD001 (n = 100) | 3.27 [2.90, 3.62]: cap 90, w45, `hi_pooled`, tuned | 3.25 [2.97, 3.57]: cap 90, L60, tuned | −0.02 [−0.34, 0.28] | −0.2 [−4.1, 3.8]; +1.8 [−0.7, 4.5]; 0.0 | **XGBoost locked** |
+| FD002 (n = 260) | 3.94 [3.65, 4.24]: cap 90, w45, `hi_consistent` | 3.94 [3.70, 4.18]: cap 90, L60 | −0.00 [−0.27, 0.27] | −1.3 [−3.7, 0.9]; **−1.2 [−2.3, −0.0]**; −0.1 | **XGBoost locked** |
+| FD003 (n = 100) | 3.48 [3.06, 4.01]: cap 90, w45, `hi_consistent` | 3.71 [3.40, 4.06]: cap 125, L30, tuned | +0.22 [−0.33, 0.77] | **−6.4 [−11.5, −1.5]**; **−2.2 [−4.2, −0.3]**; 0.0 | **XGBoost locked** |
+| FD004 (n = 249) | 5.73 [5.29, 6.20]: cap 90, w30, `hi_consistent`, tuned | 5.74 [5.37, 6.13]: cap 90, L30 | +0.01 [−0.31, 0.31] | −1.1 [−3.9, 3.3]; −1.3 [−4.7, 0.9]; −0.3 | **XGBoost locked** |
+
+- **Critical RMSE ties on every dataset:** no CI excludes 0, and Wilcoxon p ranges from 0.057 to
+  0.85 over 75 splits.
+- **The pre-registered tie rule** therefore gives XGBoost, the simpler and cheaper model.
+- **The decision check never favours the LSTM.** On FD002 and FD003 XGBoost catches more at
+  matched wasted life. So XGBoost is **locked** on all four datasets (`specs/FD00x_xgboost.yaml`,
+  `locked: true`). The LSTM specs are `runner-up`.
+- **Per subpopulation** (D35), XGBoost / LSTM finalists:
+  - FD001: 3.28 / 3.01 (n = 60) and 3.25 / 3.58 (n = 40);
+  - FD002: 3.81 / 3.80 (183) and 4.23 / 4.24 (77);
+  - FD003: 4.04 / 4.01 (56) and **2.61 [2.33, 2.90] / 3.27 [2.86, 3.75]** (44);
+  - FD004: **4.88 [4.44, 5.34] / 5.25 [4.80, 5.68]** (148) and 6.77 [6.05, 7.53] /
+    6.38 [5.86, 6.91] (101).
+
+  The two models err on different subpopulations (unpaired CIs, descriptive only). That is a
+  candidate for the later decision-layer / ensembling work, not something tested here.
+- **D25 ("ship the LSTM") is not supported** on training-engine CV: the LSTM ties and never
+  wins. The test-set evidence behind D25 remains inadmissible (rule 3).
+- **Compute:** 31 five-seed configuration runs, 13.3 h of run time. Seed-42 splits were reused
+  from earlier stages where the spec was identical (D49).
+
+## Stage E — what is delivered, and what is not done
+
+- **Delivered:**
+  - `notebooks/04_model_selection.ipynb` (executed; reads only the stage JSONs);
+  - this report;
+  - `reports/selection/*`;
+  - `specs/FD00x_{xgboost,lstm}.yaml`.
+- **Not done, by design:**
+  - `final_eval` was not run.
+  - `params.yaml` defaults are unchanged: still cap 125, window 20, no blocks.
+  - `release.spec` / `locked.yaml` were not written.
+  - The specs carry `rul_cap: 90`, which `evaluation.spec.load_spec` refuses until
+    `params.yaml` `rul_cap` matches. Adopting them is a reviewed, separate step.
+  - `train_prod` also refuses feature blocks (`save_bundle`). Serving a health-index spec needs
+    the bundle and serving support built first.
+- **Open limitations:**
+  - One factor at a time (interactions are tested only inside Stage D's leave-one-out).
+  - `seq_len` 60 is a grid edge for the FD001/FD002 LSTM runner-ups.
+  - Tuning optimism.
+  - Screening multiplicity (A–C).
+  - The single-permutation A4 control (one of twelve excluded 0.5, see Stage X).
+
+---
+
 ## Reproducibility (environment of the Stage A runs)
 
 - Generated: 2026-10-03T19:42:02+00:00
